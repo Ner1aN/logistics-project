@@ -1,0 +1,94 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-copy">
+        <div class="page-kicker">Контроль рейсов</div>
+        <h1 class="h3 mb-2">Перевозки</h1>
+        <p class="page-subtitle mb-0">Назначенные рейсы, текущие исполнения и завершенные перевозки по всем заявкам.</p>
+    </div>
+    <div class="page-header-actions">
+        <a class="btn btn-outline-secondary" href="{% url 'request-list' %}">Перейти к заявкам</a>
+    </div>
+</div>
+
+<div class="card section-card filter-card mb-4">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Навигация по рейсам</div>
+            <h2>Фильтруйте перевозки по маршруту, исполнителю и периоду</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Поиск</label>
+                <input class="form-control" type="text" name="q" value="{{ request.GET.q }}" placeholder="Клиент, водитель, транспорт, маршрут">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">С даты</label>
+                <input class="form-control" type="date" name="date_from" value="{{ request.GET.date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">По дату</label>
+                <input class="form-control" type="date" name="date_to" value="{{ request.GET.date_to }}">
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-outline-primary">Применить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="card-header border-0 px-4 pt-4 pb-0">
+        <div class="section-titlebar">
+            <strong>Реестр перевозок</strong>
+            <span class="section-note">Ресурсы, даты и текущий статус по каждому рейсу</span>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Заявка</th>
+                    <th>Клиент</th>
+                    <th>Маршрут</th>
+                    <th>Дата заявки</th>
+                    <th>Ресурсы</th>
+                    <th>Назначение</th>
+                    <th>Статус</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in transportations %}
+                <tr>
+                    <td><a class="table-link mono" href="{% url 'request-detail' item.request.pk %}">#{{ item.request.pk }}</a></td>
+                    <td>
+                        <div class="fw-semibold">{{ item.request.client.name }}</div>
+                        <div class="table-note">{{ item.request.get_cargo_type_display }} · {{ item.request.cargo_name }}</div>
+                    </td>
+                    <td>
+                        <div class="table-route">
+                            <div class="route-stop route-stop--from">{{ item.request.route_from }}</div>
+                            <div class="route-stop route-stop--to">{{ item.request.route_to }}</div>
+                        </div>
+                    </td>
+                    <td>{{ item.request.transportation_date|date:'d.m.Y' }}</td>
+                    <td>
+                        <div class="resource-stack">
+                            <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.driver.full_name }}</span>
+                            <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.vehicle.registration_number }}</span>
+                        </div>
+                    </td>
+                    <td class="mono">{{ item.assigned_at|date:'d.m.Y H:i' }}</td>
+                    <td><span class="badge text-bg-{{ item.request.status_badge_class }}">{{ item.request.status.name }}</span></td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'transportation-detail' item.pk %}">Открыть</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">Перевозки не найдены.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

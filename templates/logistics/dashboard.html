@@ -1,0 +1,206 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<section class="card dashboard-hero mb-4">
+    <div class="card-body p-4 p-xl-5">
+        <div class="row g-4 align-items-center">
+            <div class="col-xl-7">
+                <div class="page-kicker">Логистическая диспетчерская</div>
+                <h1 class="hero-title">Управляйте заявками, перевозками и загрузкой автопарка из одного окна.</h1>
+                <p class="hero-text mb-0">
+                    Система показывает текущую ситуацию по маршрутам, свободным водителям и транспорту,
+                    а также помогает быстро перейти к назначению и контролю доставки.
+                </p>
+                <div class="hero-badges">
+                    <span class="hero-chip"><i class="bi bi-diagram-3"></i> контроль статусов</span>
+                    <span class="hero-chip"><i class="bi bi-truck"></i> управление перевозками</span>
+                    <span class="hero-chip"><i class="bi bi-people"></i> загрузка ресурсов</span>
+                </div>
+            </div>
+            <div class="col-xl-5">
+                <div class="hero-side">
+                    <div class="hero-side-label">Смена логиста</div>
+                    <h2 class="h4 mb-2">Оперативная готовность</h2>
+                    <p class="mb-0 text-white-50">Отсюда можно быстро перейти к созданию новой заявки или к реестру назначенных перевозок.</p>
+                    <div class="hero-side-grid">
+                        <div class="hero-side-stat">
+                            <span>Свободно водителей</span>
+                            <strong>{{ available_drivers }}</strong>
+                        </div>
+                        <div class="hero-side-stat">
+                            <span>Свободно машин</span>
+                            <strong>{{ available_vehicles }}</strong>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        <a class="btn btn-primary" href="{% url 'request-create' %}">Создать новую заявку</a>
+                        <a class="btn btn-outline-light" href="{% url 'transportation-list' %}">Открыть раздел перевозок</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--teal h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Новые заявки</div>
+                    <div class="metric-icon"><i class="bi bi-inbox"></i></div>
+                </div>
+                <div class="metric-value">{{ new_count }}</div>
+                <div class="table-note mt-2">Требуют первичной обработки и уточнения маршрута.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--navy h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Активные заявки</div>
+                    <div class="metric-icon"><i class="bi bi-hourglass-split"></i></div>
+                </div>
+                <div class="metric-value">{{ active_count }}</div>
+                <div class="table-note mt-2">Находятся в работе, назначении или в процессе исполнения.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--sand h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Выполненные</div>
+                    <div class="metric-icon"><i class="bi bi-check2-circle"></i></div>
+                </div>
+                <div class="metric-value">{{ completed_count }}</div>
+                <div class="table-note mt-2">Успешно закрытые рейсы и завершенные поставки.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--orange h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Отмененные</div>
+                    <div class="metric-icon"><i class="bi bi-x-circle"></i></div>
+                </div>
+                <div class="metric-value">{{ cancelled_count }}</div>
+                <div class="table-note mt-2">Архив отмен с фиксированной историей статусов.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Доступность команды</div>
+            <div class="summary-value">{{ available_drivers }}</div>
+            <p class="mb-0 table-note">Количество водителей, которых можно назначить на новые активные заявки без конфликта по занятости.</p>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Готовность автопарка</div>
+            <div class="summary-value">{{ available_vehicles }}</div>
+            <p class="mb-0 table-note">Свободный транспорт для ближайших рейсов, переадресаций и срочных заявок.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-7">
+        <div class="card section-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Последние заявки</strong>
+                    <span class="section-note">Новые записи и последние изменения в реестре заявок</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Клиент и груз</th>
+                            <th>Маршрут</th>
+                            <th>Дата</th>
+                            <th>Статус</th>
+                            <th>Стоимость</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in latest_requests %}
+                        <tr>
+                            <td><a class="table-link mono" href="{% url 'request-detail' item.pk %}">#{{ item.pk }}</a></td>
+                            <td>
+                                <div class="fw-semibold">{{ item.client.name }}</div>
+                                <div class="table-note">{{ item.get_cargo_type_display }} · {{ item.cargo_name }}</div>
+                            </td>
+                            <td>
+                                <div class="table-route">
+                                    <div class="route-stop route-stop--from">{{ item.route_from }}</div>
+                                    <div class="route-stop route-stop--to">{{ item.route_to }}</div>
+                                </div>
+                            </td>
+                            <td>{{ item.transportation_date|date:'d.m.Y' }}</td>
+                            <td><span class="badge text-bg-{{ item.status_badge_class }}">{{ item.status.name }}</span></td>
+                            <td class="mono">{{ item.cost }} ₽</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">Пока нет данных для отображения.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="card section-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Ближайшие перевозки</strong>
+                    <span class="section-note">Назначенные рейсы на ближайшие даты</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Заявка</th>
+                            <th>Дата</th>
+                            <th>Ресурсы</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in upcoming_transportations %}
+                        <tr>
+                            <td>
+                                <a class="table-link mono" href="{% url 'transportation-detail' item.pk %}">#{{ item.request.pk }}</a>
+                                <div class="table-note">{{ item.request.client.name }} · {{ item.request.get_cargo_type_display }}</div>
+                            </td>
+                            <td>{{ item.request.transportation_date|date:'d.m.Y' }}</td>
+                            <td>
+                                <div class="resource-stack">
+                                    <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.driver.full_name }}</span>
+                                    <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.vehicle.registration_number }}</span>
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-secondary" href="{% url 'transportation-detail' item.pk %}">Открыть</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">Ближайшие перевозки пока не назначены.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

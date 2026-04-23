@@ -1,0 +1,52 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+{% include 'logistics/includes/list_header.html' with kicker='Клиентская база' title='Клиенты' description='Справочник заказчиков, контактных данных и адресов для перевозок.' create_url='client-create' create_label='Добавить клиента' %}
+
+<div class="card section-card filter-card">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Поиск по базе</div>
+            <h2>Найдите клиента по названию компании, телефону или email</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label">Поиск</label>
+                <input class="form-control" type="text" name="q" value="{{ request.GET.q }}" placeholder="Название, телефон или email">
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-outline-primary">Найти</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card section-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Наименование</th>
+                    <th>Телефон</th>
+                    <th>Email</th>
+                    <th>Адрес</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in clients %}
+                <tr>
+                    <td class="fw-semibold">{{ item.name }}</td>
+                    <td class="mono">{{ item.phone }}</td>
+                    <td>{{ item.email|default:'—' }}</td>
+                    <td>{{ item.address|default:'—' }}</td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'client-edit' item.pk %}">Изменить</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">Клиенты не найдены.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

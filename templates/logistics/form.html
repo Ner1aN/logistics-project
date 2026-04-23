@@ -1,0 +1,65 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<div class="row justify-content-center form-shell">
+    <div class="col-xl-10">
+        <div class="row g-4 align-items-stretch">
+            <div class="col-lg-4">
+                <div class="card form-side-card">
+                    <div class="form-side-icon"><i class="bi bi-pencil-square"></i></div>
+                    <h2 class="h3 mb-3">
+                        {% if title %}
+                            {{ title }}
+                        {% elif object %}
+                            Редактирование записи
+                        {% else %}
+                            Ввод данных
+                        {% endif %}
+                    </h2>
+                    <p class="mb-0">Заполняйте карточку аккуратно: данные сразу попадут в реестр логиста, отчеты и связанные страницы системы.</p>
+                    <ul class="form-side-list mb-0">
+                        <li>Проверяйте маршрут и дату перевозки перед сохранением.</li>
+                        <li>Для заявок выбирайте тип груза и указывайте массу или объем.</li>
+                        <li>Для перевозок назначайте только реально доступные ресурсы.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="card form-main-card">
+                    <div class="card-body">
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger app-alert">
+                                {{ form.non_field_errors|join:', ' }}
+                            </div>
+                        {% endif %}
+                        {% if form.load_percent_preview %}
+                            <div class="alert alert-info app-alert">
+                                Загрузка транспорта по выбранной машине: {{ form.load_percent_preview }}%.
+                            </div>
+                        {% endif %}
+
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="row g-3">
+                                {% for field in form %}
+                                    <div class="{% if field.field.widget.input_type == 'textarea' or field.name == 'comment' or field.name == 'notes' %}col-12{% else %}col-md-6{% endif %}">
+                                        <label class="form-label" for="id_{{ field.name }}">{{ field.label }}</label>
+                                        {{ field }}
+                                        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                        {% if field.errors %}<div class="text-danger small mt-2">{{ field.errors|join:', ' }}</div>{% endif %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="mt-4 d-flex flex-wrap gap-2">
+                                <button class="btn btn-primary">Сохранить</button>
+                                <a class="btn btn-outline-secondary" href="javascript:history.back()">Назад</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

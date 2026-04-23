@@ -1,0 +1,531 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-copy">
+        <div class="page-kicker">Аналитика</div>
+        <h1 class="h3 mb-2">Отчетность</h1>
+        <p class="page-subtitle mb-0">Сводные показатели по заявкам, статусам и выполненным перевозкам за выбранный период.</p>
+    </div>
+</div>
+
+<div class="card section-card filter-card mb-4">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Параметры отчета</div>
+            <h2>Настройте период, статус, клиента и тип груза для формирования выборки</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">С даты</label>
+                <input class="form-control" type="date" name="date_from" value="{{ request.GET.date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">По дату</label>
+                <input class="form-control" type="date" name="date_to" value="{{ request.GET.date_to }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Статус</label>
+                <select class="form-select" name="status">
+                    <option value="">Все</option>
+                    {% for status in statuses %}
+                        <option value="{{ status.code }}" {% if request.GET.status == status.code %}selected{% endif %}>{{ status.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Клиент</label>
+                <select class="form-select" name="client">
+                    <option value="">Все</option>
+                    {% for client in clients %}
+                        <option value="{{ client.pk }}" {% if request.GET.client == client.pk|stringformat:'s' %}selected{% endif %}>{{ client.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Тип груза</label>
+                <select class="form-select" name="cargo_type">
+                    <option value="">Все</option>
+                    {% for value, label in cargo_types %}
+                        <option value="{{ value }}" {% if request.GET.cargo_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-primary">Сформировать отчет</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--teal h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Заявок в отчете</div>
+                    <div class="metric-icon"><i class="bi bi-list-check"></i></div>
+                </div>
+                <div class="metric-value">{{ request_total_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--navy h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Сумма по заявкам</div>
+                    <div class="metric-icon"><i class="bi bi-currency-exchange"></i></div>
+                </div>
+                <div class="metric-value">{{ request_total_cost }} ₽</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--sand h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Выполненные рейсы</div>
+                    <div class="metric-icon"><i class="bi bi-truck-flatbed"></i></div>
+                </div>
+                <div class="metric-value">{{ completed_transportation_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card metric-card metric-card--orange h-100">
+            <div class="card-body p-4">
+                <div class="metric-top">
+                    <div class="metric-label">Выручка по выполненным</div>
+                    <div class="metric-icon"><i class="bi bi-bar-chart-line"></i></div>
+                </div>
+                <div class="metric-value">{{ completed_transportation_cost }} ₽</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Средняя стоимость</div>
+            <div class="summary-value">{{ average_request_cost|floatformat:0 }} ₽</div>
+            <p class="mb-0 table-note">Среднее значение по заявкам текущей выборки.</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Выполнено заявок</div>
+            <div class="summary-value">{{ completed_request_percent }}%</div>
+            <p class="mb-0 table-note">{{ completed_request_count }} из {{ request_total_count }} заявок завершены.</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Просроченные</div>
+            <div class="summary-value">{{ overdue_request_count }}</div>
+            <p class="mb-0 table-note">Дата перевозки прошла, но заявка не завершена и не отменена.</p>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Активные в срок</div>
+            <div class="summary-value">{{ active_request_count }}</div>
+            <p class="mb-0 table-note">Заявки в работе с датой перевозки сегодня или позже.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-4">
+        <div class="card section-card chart-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Структура по статусам</strong>
+                    <span class="section-note">Количество заявок по текущей выборке</span>
+                </div>
+            </div>
+            <div class="card-body detail-card-body">
+                <div class="chart-wrap">
+                    <canvas id="statusDistributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-8">
+        <div class="card section-card chart-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Динамика заявок по датам</strong>
+                    <span class="section-note">Количество заявок и суммарная стоимость по плановой дате перевозки</span>
+                </div>
+            </div>
+            <div class="card-body detail-card-body">
+                <div class="chart-wrap chart-wrap--wide">
+                    <canvas id="requestDynamicsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card section-card chart-card mb-4">
+    <div class="card-header border-0 px-4 pt-4 pb-0">
+        <div class="section-titlebar">
+            <strong>Выполненные перевозки по датам</strong>
+            <span class="section-note">Плотность закрытых рейсов внутри выбранного периода</span>
+        </div>
+    </div>
+    <div class="card-body detail-card-body">
+        <div class="chart-wrap chart-wrap--wide">
+            <canvas id="completedDynamicsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-7">
+        <div class="card section-card chart-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Загрузка водителей</strong>
+                    <span class="section-note">Количество выполненных перевозок по каждому водителю</span>
+                </div>
+            </div>
+            <div class="card-body detail-card-body">
+                <div class="chart-wrap chart-wrap--wide">
+                    <canvas id="driverLoadChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-5">
+        <div class="card section-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Рейтинг водителей</strong>
+                    <span class="section-note">Выполненные рейсы за выбранный период</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Водитель</th>
+                            <th>Перевозок</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in driver_load_stats %}
+                        <tr>
+                            <td>{{ row.driver__full_name }}</td>
+                            <td class="mono">{{ row.total }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="2" class="text-center text-muted py-4">Нет выполненных перевозок.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card section-card mb-4">
+    <div class="card-header border-0 px-4 pt-4 pb-0">
+        <div class="section-titlebar">
+            <strong>Статистика по статусам заявок</strong>
+            <span class="section-note">Сравнение количества и суммы по каждому этапу</span>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Статус</th>
+                    <th>Количество</th>
+                    <th>Сумма</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in status_stats %}
+                <tr>
+                    <td>{{ row.status__name }}</td>
+                    <td class="mono">{{ row.total }}</td>
+                    <td class="mono">{{ row.total_cost|default:0 }} ₽</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="3" class="text-center text-muted py-4">Нет данных для выбранных фильтров.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-6">
+        <div class="card section-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Отчет по заявкам</strong>
+                    <span class="section-note">Клиенты, даты и стоимость в текущей выборке</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Клиент</th>
+                            <th>Груз</th>
+                            <th>Дата</th>
+                            <th>Статус</th>
+                            <th>Стоимость</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in requests %}
+                        <tr>
+                            <td><a class="table-link mono" href="{% url 'request-detail' item.pk %}">#{{ item.pk }}</a></td>
+                            <td>{{ item.client.name }}</td>
+                            <td>{{ item.get_cargo_type_display }}</td>
+                            <td>{{ item.transportation_date|date:'d.m.Y' }}</td>
+                            <td>{{ item.status.name }}</td>
+                            <td class="mono">{{ item.cost }} ₽</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">Нет записей.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card section-card h-100">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Отчет по выполненным перевозкам</strong>
+                    <span class="section-note">Рейсы, завершенные в отчетном диапазоне</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Заявка</th>
+                            <th>Водитель</th>
+                            <th>Транспорт</th>
+                            <th>Дата завершения</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in completed_transportations %}
+                        <tr>
+                            <td><a class="table-link mono" href="{% url 'transportation-detail' item.pk %}">#{{ item.request.pk }}</a></td>
+                            <td>{{ item.driver.full_name }}</td>
+                            <td>{{ item.vehicle.registration_number }}</td>
+                            <td class="mono">
+                                {% if item.arrival_at %}
+                                    {{ item.arrival_at|date:'d.m.Y H:i' }}
+                                {% else %}
+                                    {{ item.request.transportation_date|date:'d.m.Y' }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">Выполненные перевозки не найдены.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ status_chart|json_script:"status-chart-data" }}
+{{ request_dynamics_chart|json_script:"request-dynamics-data" }}
+{{ completed_dynamics_chart|json_script:"completed-dynamics-data" }}
+{{ driver_load_chart|json_script:"driver-load-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+    const statusChartData = JSON.parse(document.getElementById('status-chart-data').textContent);
+    const requestDynamicsData = JSON.parse(document.getElementById('request-dynamics-data').textContent);
+    const completedDynamicsData = JSON.parse(document.getElementById('completed-dynamics-data').textContent);
+    const driverLoadData = JSON.parse(document.getElementById('driver-load-data').textContent);
+
+    const chartPalette = ['#157a6e', '#274c77', '#d8a35d', '#d96c47', '#8d6cab', '#4b6578'];
+    const gridColor = 'rgba(26, 36, 48, 0.08)';
+    const labelColor = '#667382';
+
+    Chart.defaults.font.family = 'Manrope, Segoe UI, sans-serif';
+    Chart.defaults.color = labelColor;
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+
+    const makeEmptyAware = (items, fallbackLabel = 'Нет данных') => {
+        if (items.length) {
+            return items;
+        }
+        return [{ label: fallbackLabel, count: 0, cost: 0 }];
+    };
+
+    const statusItems = makeEmptyAware(statusChartData);
+    const requestItems = requestDynamicsData;
+    const completedItems = completedDynamicsData;
+    const driverLoadItems = driverLoadData;
+
+    new Chart(document.getElementById('statusDistributionChart'), {
+        type: 'doughnut',
+        data: {
+            labels: statusItems.map(item => item.label),
+            datasets: [{
+                data: statusItems.map(item => item.count),
+                backgroundColor: statusItems.map((_, index) => chartPalette[index % chartPalette.length]),
+                borderColor: '#fff8f1',
+                borderWidth: 4,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            cutout: '64%',
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: context => `${context.label}: ${context.parsed} шт.`
+                    }
+                }
+            }
+        }
+    });
+
+    new Chart(document.getElementById('requestDynamicsChart'), {
+        data: {
+            labels: requestItems.map(item => item.label),
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'Количество заявок',
+                    data: requestItems.map(item => item.count),
+                    borderColor: '#157a6e',
+                    backgroundColor: 'rgba(21, 122, 110, 0.14)',
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    yAxisID: 'y'
+                },
+                {
+                    type: 'bar',
+                    label: 'Сумма, ₽',
+                    data: requestItems.map(item => item.cost),
+                    backgroundColor: 'rgba(216, 163, 93, 0.55)',
+                    borderRadius: 10,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: gridColor
+                    },
+                    ticks: {
+                        precision: 0
+                    }
+                },
+                y1: {
+                    beginAtZero: true,
+                    position: 'right',
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+
+    new Chart(document.getElementById('completedDynamicsChart'), {
+        type: 'bar',
+        data: {
+            labels: completedItems.map(item => item.label),
+            datasets: [{
+                label: 'Выполненные перевозки',
+                data: completedItems.map(item => item.count),
+                backgroundColor: completedItems.map((_, index) => chartPalette[index % chartPalette.length]),
+                borderRadius: 12
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: gridColor
+                    },
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+
+    new Chart(document.getElementById('driverLoadChart'), {
+        type: 'bar',
+        data: {
+            labels: driverLoadItems.map(item => item.label),
+            datasets: [{
+                label: 'Выполненные перевозки',
+                data: driverLoadItems.map(item => item.count),
+                backgroundColor: driverLoadItems.map((_, index) => chartPalette[index % chartPalette.length]),
+                borderRadius: 12
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: {
+                        color: gridColor
+                    },
+                    ticks: {
+                        precision: 0
+                    }
+                },
+                y: {
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

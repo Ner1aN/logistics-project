@@ -1,0 +1,15 @@
+<div class="page-header">
+    <div class="page-header-copy">
+        <div class="page-kicker">{{ kicker|default:'Рабочий раздел' }}</div>
+        <h1 class="h3 mb-2">{{ title }}</h1>
+        <p class="page-subtitle mb-0">{{ description|default:'Управление справочником и связанными данными раздела.' }}</p>
+    </div>
+    {% if create_url %}
+        <div class="page-header-actions">
+            <a class="btn btn-primary" href="{% url create_url %}">{{ create_label|default:'Добавить' }}</a>
+            {% if secondary_url %}
+                <a class="btn btn-outline-secondary" href="{% url secondary_url %}">{{ secondary_label }}</a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

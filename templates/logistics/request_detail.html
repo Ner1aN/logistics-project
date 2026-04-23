@@ -1,0 +1,178 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<div class="page-header detail-hero">
+    <div class="page-header-copy">
+        <div class="page-kicker">Карточка заявки</div>
+        <h1 class="h3 mb-2">Заявка #{{ request_obj.pk }}</h1>
+        <p class="page-subtitle mb-0">{{ request_obj.client.name }} · {{ request_obj.get_cargo_type_display }} · {{ request_obj.cargo_name }}</p>
+        <div class="data-strip">
+            <span class="mini-chip"><i class="bi bi-calendar-event"></i> {{ request_obj.transportation_date|date:'d.m.Y' }}</span>
+            <span class="mini-chip"><i class="bi bi-cash-stack"></i> {{ request_obj.cost }} ₽</span>
+            <span class="mini-chip"><i class="bi bi-flag"></i> {{ request_obj.status.name }}</span>
+        </div>
+    </div>
+    <div class="page-header-actions">
+        <a class="btn btn-outline-secondary" href="{% url 'request-list' %}">К списку</a>
+        <a class="btn btn-outline-primary" href="{% url 'request-edit' request_obj.pk %}">Редактировать</a>
+        {% if can_assign %}
+            <a class="btn btn-primary" href="{% url 'request-assign' request_obj.pk %}">
+                {% if transportation %}Изменить перевозку{% else %}Назначить перевозку{% endif %}
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="card section-card">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>Основные параметры заявки</strong>
+                    <span class="section-note">Детальная информация по маршруту, грузу и стоимости</span>
+                </div>
+            </div>
+            <div class="card-body detail-card-body">
+                <dl class="row details-grid mb-0">
+                    <dt class="col-sm-4">Клиент</dt>
+                    <dd class="col-sm-8">{{ request_obj.client.name }}</dd>
+
+                    <dt class="col-sm-4">Адрес загрузки</dt>
+                    <dd class="col-sm-8">{{ request_obj.route_from }}</dd>
+
+                    <dt class="col-sm-4">Адрес выгрузки</dt>
+                    <dd class="col-sm-8">{{ request_obj.route_to }}</dd>
+
+                    <dt class="col-sm-4">Тип груза</dt>
+                    <dd class="col-sm-8">{{ request_obj.get_cargo_type_display }}</dd>
+
+                    <dt class="col-sm-4">Описание груза</dt>
+                    <dd class="col-sm-8">{{ request_obj.cargo_name }}</dd>
+
+                    <dt class="col-sm-4">Масса / объем</dt>
+                    <dd class="col-sm-8">{{ request_obj.cargo_summary }}</dd>
+
+                    <dt class="col-sm-4">Тариф</dt>
+                    <dd class="col-sm-8">{{ request_obj.cargo_tariff_summary }}</dd>
+
+                    <dt class="col-sm-4">Дата перевозки</dt>
+                    <dd class="col-sm-8">{{ request_obj.transportation_date|date:'d.m.Y' }}</dd>
+
+                    <dt class="col-sm-4">Стоимость</dt>
+                    <dd class="col-sm-8">{{ request_obj.cost }} ₽</dd>
+
+                    <dt class="col-sm-4">Комментарий</dt>
+                    <dd class="col-sm-8">{{ request_obj.comment|default:'—' }}</dd>
+
+                    <dt class="col-sm-4">Создана</dt>
+                    <dd class="col-sm-8">
+                        {{ request_obj.created_at|date:'d.m.Y H:i' }}
+                        {% if request_obj.created_by %} · {{ request_obj.created_by.username }}{% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card section-card">
+            <div class="card-header border-0 px-4 pt-4 pb-0">
+                <div class="section-titlebar">
+                    <strong>История статусов</strong>
+                    <span class="section-note">Автоматически фиксирует каждое изменение состояния заявки</span>
+                </div>
+            </div>
+            <div class="card-body detail-card-body">
+                <div class="history-timeline">
+                    {% for item in request_obj.status_history.all %}
+                        <div class="history-item">
+                            <div class="d-flex justify-content-between align-items-start gap-3">
+                                <div>
+                                    <div class="fw-semibold">{{ item.status.name }}</div>
+                                    <div class="table-note">{{ item.changed_by.username|default:'Система' }}</div>
+                                </div>
+                                <div class="mono table-note">{{ item.changed_at|date:'d.m.Y H:i' }}</div>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="empty-note">История статусов пока не сформирована.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="panel-stack">
+            <div class="card section-card">
+                <div class="card-header border-0 px-4 pt-4 pb-0">
+                    <strong>Назначенные ресурсы</strong>
+                </div>
+                <div class="card-body detail-card-body">
+                    {% if transportation %}
+                        <dl class="row details-grid mb-3">
+                            <dt class="col-sm-5">Водитель</dt>
+                            <dd class="col-sm-7">{{ transportation.driver.full_name }}</dd>
+
+                            <dt class="col-sm-5">Транспорт</dt>
+                            <dd class="col-sm-7">{{ transportation.vehicle.registration_number }}</dd>
+
+                            <dt class="col-sm-5">Загрузка</dt>
+                            <dd class="col-sm-7">
+                                {% if transportation.load_percent %}
+                                    {{ transportation.load_percent }}%
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-5">Назначена</dt>
+                            <dd class="col-sm-7">{{ transportation.assigned_at|date:'d.m.Y H:i' }}</dd>
+
+                            <dt class="col-sm-5">Старт</dt>
+                            <dd class="col-sm-7">{{ transportation.departure_at|date:'d.m.Y H:i'|default:'—' }}</dd>
+
+                            <dt class="col-sm-5">Завершение</dt>
+                            <dd class="col-sm-7">{{ transportation.arrival_at|date:'d.m.Y H:i'|default:'—' }}</dd>
+
+                            <dt class="col-sm-5">Примечание</dt>
+                            <dd class="col-sm-7">{{ transportation.notes|default:'—' }}</dd>
+                        </dl>
+                        <a class="btn btn-outline-secondary w-100" href="{% url 'transportation-detail' transportation.pk %}">Открыть перевозку</a>
+                    {% else %}
+                        <p class="table-note mb-3">Водитель и транспорт пока не закреплены за этой заявкой.</p>
+                        {% if can_assign %}
+                            <a class="btn btn-primary w-100" href="{% url 'request-assign' request_obj.pk %}">Назначить перевозку</a>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card section-card">
+                <div class="card-header border-0 px-4 pt-4 pb-0">
+                    <strong>Архив и жизненный цикл</strong>
+                </div>
+                <div class="card-body detail-card-body">
+                    {% if request_obj.archived %}
+                        <p class="table-note">Заявка сейчас находится в архиве и не участвует в активном реестре.</p>
+                        {% if not request_obj.is_terminal %}
+                            <form method="post" action="{% url 'request-archive' request_obj.pk %}">
+                                {% csrf_token %}
+                                <button class="btn btn-outline-success w-100">Вернуть из архива</button>
+                            </form>
+                        {% else %}
+                            <div class="hero-chip w-100 justify-content-center"><i class="bi bi-archive"></i> Архивация выполнена автоматически</div>
+                        {% endif %}
+                    {% else %}
+                        <p class="table-note">Заявка отображается в активном контуре и доступна для назначения.</p>
+                        {% if not request_obj.is_terminal %}
+                            <form method="post" action="{% url 'request-archive' request_obj.pk %}">
+                                {% csrf_token %}
+                                <button class="btn btn-outline-warning w-100">Переместить в архив</button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

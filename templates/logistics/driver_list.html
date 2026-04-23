@@ -1,0 +1,66 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+{% include 'logistics/includes/list_header.html' with kicker='Ресурсы команды' title='Водители' description='Справочник водителей с контролем занятости и быстрым поиском.' create_url='driver-create' create_label='Добавить водителя' %}
+
+<div class="card section-card filter-card">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Фильтрация</div>
+            <h2>Проверьте доступность водителей и найдите нужного исполнителя</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Поиск</label>
+                <input class="form-control" type="text" name="q" value="{{ request.GET.q }}" placeholder="ФИО, телефон, удостоверение">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Доступность</label>
+                <select class="form-select" name="availability">
+                    <option value="">Все</option>
+                    <option value="free" {% if request.GET.availability == 'free' %}selected{% endif %}>Свободные</option>
+                    <option value="busy" {% if request.GET.availability == 'busy' %}selected{% endif %}>Занятые</option>
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-outline-primary">Применить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card section-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Телефон</th>
+                    <th>Удостоверение</th>
+                    <th>Статус</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in drivers %}
+                <tr>
+                    <td class="fw-semibold">{{ item.full_name }}</td>
+                    <td class="mono">{{ item.phone }}</td>
+                    <td class="mono">{{ item.license_number }}</td>
+                    <td>
+                        {% if item.is_available %}
+                            <span class="badge text-bg-success">Свободен</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Занят</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'driver-edit' item.pk %}">Изменить</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">Водители не найдены.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

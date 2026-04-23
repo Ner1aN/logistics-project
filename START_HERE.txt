@@ -1,0 +1,12 @@
+1. Extract the archive to any folder.
+2. Open the project folder.
+3. Double-click start_project.bat
+4. Wait until the browser opens http://127.0.0.1:8000/
+
+Login:
+admin
+
+Password:
+admin12345
+
+If Python is not installed, install Python 3.11 or newer first.

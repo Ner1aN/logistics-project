@@ -1,0 +1,147 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-copy">
+        <div class="page-kicker">{% if archive_mode %}Архив перевозок{% else %}Реестр заявок{% endif %}</div>
+        <h1 class="h3 mb-2">{{ title }}</h1>
+        <p class="page-subtitle mb-0">{{ description }}</p>
+    </div>
+    <div class="page-header-actions">
+        <a class="btn btn-primary" href="{% url 'request-create' %}">Создать заявку</a>
+        {% if archive_mode %}
+            <a class="btn btn-outline-secondary" href="{% url 'request-list' %}">Активные заявки</a>
+        {% else %}
+            <a class="btn btn-outline-secondary" href="{% url 'request-archive-list' %}">Открыть архив</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card section-card filter-card mb-4">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Поиск и фильтрация</div>
+            <h2>Найдите нужную заявку по клиенту, маршруту, дате и статусу</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Статус</label>
+                <select class="form-select" name="status">
+                    <option value="">Все</option>
+                    {% for status in statuses %}
+                        <option value="{{ status.code }}" {% if request.GET.status == status.code %}selected{% endif %}>{{ status.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Клиент</label>
+                <select class="form-select" name="client">
+                    <option value="">Все</option>
+                    {% for client in clients %}
+                        <option value="{{ client.pk }}" {% if request.GET.client == client.pk|stringformat:'s' %}selected{% endif %}>{{ client.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Тип груза</label>
+                <select class="form-select" name="cargo_type">
+                    <option value="">Все</option>
+                    {% for value, label in cargo_types %}
+                        <option value="{{ value }}" {% if request.GET.cargo_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Маршрут</label>
+                <input class="form-control" type="text" name="route" value="{{ request.GET.route }}" placeholder="Загрузка или выгрузка">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">С даты</label>
+                <input class="form-control" type="date" name="date_from" value="{{ request.GET.date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">По дату</label>
+                <input class="form-control" type="date" name="date_to" value="{{ request.GET.date_to }}">
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-outline-primary">Применить фильтры</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="card-header border-0 px-4 pt-4 pb-0">
+        <div class="section-titlebar">
+            <strong>{% if archive_mode %}Архивные заявки{% else %}Текущие заявки{% endif %}</strong>
+            <span class="section-note">Карточки с маршрутом, назначением и быстрыми действиями</span>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Клиент и груз</th>
+                    <th>Маршрут</th>
+                    <th>Дата</th>
+                    <th>Назначение</th>
+                    <th>Статус</th>
+                    <th>Стоимость</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in requests %}
+                <tr>
+                    <td><a class="table-link mono" href="{% url 'request-detail' item.pk %}">#{{ item.pk }}</a></td>
+                    <td>
+                        <div class="fw-semibold">{{ item.client.name }}</div>
+                        <div class="table-note">{{ item.get_cargo_type_display }} · {{ item.cargo_name }} · {{ item.cargo_summary }}</div>
+                    </td>
+                    <td>
+                        <div class="table-route">
+                            <div class="route-stop route-stop--from">{{ item.route_from }}</div>
+                            <div class="route-stop route-stop--to">{{ item.route_to }}</div>
+                        </div>
+                    </td>
+                    <td>{{ item.transportation_date|date:'d.m.Y' }}</td>
+                    <td>
+                        {% if item.transportation %}
+                            <div class="resource-stack">
+                                <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.transportation.driver.full_name }}</span>
+                                <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.transportation.vehicle.registration_number }}</span>
+                            </div>
+                        {% else %}
+                            <span class="table-note">Еще не назначено</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge text-bg-{{ item.status_badge_class }}">{{ item.status.name }}</span></td>
+                    <td class="mono">{{ item.cost }} ₽</td>
+                    <td>
+                        <div class="table-actions">
+                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'request-detail' item.pk %}">Открыть</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'request-edit' item.pk %}">Изменить</a>
+                            {% if not item.archived and not item.is_terminal %}
+                                <a class="btn btn-sm btn-outline-info" href="{% url 'request-assign' item.pk %}">Назначить</a>
+                                <form method="post" action="{% url 'request-archive' item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-warning">В архив</button>
+                                </form>
+                            {% elif item.archived and not item.is_terminal %}
+                                <form method="post" action="{% url 'request-archive' item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-success">Вернуть</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">Заявки по текущим фильтрам не найдены.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

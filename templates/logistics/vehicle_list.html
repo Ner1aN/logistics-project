@@ -1,0 +1,68 @@
+{% extends 'logistics/base.html' %}
+
+{% block content %}
+{% include 'logistics/includes/list_header.html' with kicker='Автопарк' title='Транспорт' description='Справочник машин с контролем доступности и грузоподъемности.' create_url='vehicle-create' create_label='Добавить транспорт' %}
+
+<div class="card section-card filter-card">
+    <div class="card-body">
+        <div class="filter-title">
+            <div class="page-kicker">Поиск по автопарку</div>
+            <h2>Фильтруйте транспорт по номеру, модели и текущей занятости</h2>
+        </div>
+        <form class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Поиск</label>
+                <input class="form-control" type="text" name="q" value="{{ request.GET.q }}" placeholder="Номер, марка или модель">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Доступность</label>
+                <select class="form-select" name="availability">
+                    <option value="">Все</option>
+                    <option value="free" {% if request.GET.availability == 'free' %}selected{% endif %}>Свободен</option>
+                    <option value="busy" {% if request.GET.availability == 'busy' %}selected{% endif %}>Занят</option>
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-outline-primary">Применить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card section-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Гос. номер</th>
+                    <th>Марка</th>
+                    <th>Модель</th>
+                    <th>Грузоподъемность</th>
+                    <th>Статус</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in vehicles %}
+                <tr>
+                    <td class="fw-semibold mono">{{ item.registration_number }}</td>
+                    <td>{{ item.brand }}</td>
+                    <td>{{ item.model|default:'—' }}</td>
+                    <td class="mono">{{ item.capacity_tons }} т</td>
+                    <td>
+                        {% if item.is_available %}
+                            <span class="badge text-bg-success">Свободен</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Занят</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'vehicle-edit' item.pk %}">Изменить</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Транспорт не найден.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
