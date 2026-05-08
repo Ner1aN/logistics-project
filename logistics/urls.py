@@ -33,4 +33,6 @@ urlpatterns = [
     path('transportations/<int:pk>/', views.TransportationDetailView.as_view(), name='transportation-detail'),
 
     path('reports/', views.reports_view, name='reports'),
+    path('reports/pdf/', views.reports_pdf_view, name='reports-pdf'),
 ]
+

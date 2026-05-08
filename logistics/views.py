@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Avg, Count, Prefetch, Q, Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -9,6 +10,7 @@ from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from .forms import ClientForm, DriverForm, TransportationAssignForm, TransportationRequestForm, VehicleForm
+from .pdf import build_reports_pdf
 from .models import (
     Client,
     Driver,
@@ -354,8 +356,7 @@ def toggle_archive_request(request, pk):
     return redirect('request-detail', pk=request_obj.pk)
 
 
-@login_required
-def reports_view(request):
+def _build_reports_context(params):
     ensure_default_statuses()
     request_queryset = TransportationRequest.objects.select_related(
         'client',
@@ -363,7 +364,7 @@ def reports_view(request):
         'transportation__driver',
         'transportation__vehicle',
     )
-    request_queryset = _filter_requests(request_queryset, request.GET, archive_mode=None)
+    request_queryset = _filter_requests(request_queryset, params, archive_mode=None)
 
     completed_transportations = Transportation.objects.select_related(
         'request',
@@ -373,10 +374,10 @@ def reports_view(request):
         'vehicle',
     ).filter(request__status__code='completed')
 
-    client_id = request.GET.get('client', '').strip()
-    cargo_type = request.GET.get('cargo_type', '').strip()
-    date_from = request.GET.get('date_from', '').strip()
-    date_to = request.GET.get('date_to', '').strip()
+    client_id = params.get('client', '').strip()
+    cargo_type = params.get('cargo_type', '').strip()
+    date_from = params.get('date_from', '').strip()
+    date_to = params.get('date_to', '').strip()
 
     if client_id:
         completed_transportations = completed_transportations.filter(request__client_id=client_id)
@@ -455,7 +456,7 @@ def reports_view(request):
         if row['request__transportation_date']
     ]
 
-    context = {
+    return {
         'statuses': RequestStatus.objects.all(),
         'clients': Client.objects.all(),
         'cargo_types': TransportationRequest.CargoType.choices,
@@ -477,4 +478,20 @@ def reports_view(request):
         'requests': request_queryset.order_by('-transportation_date', '-created_at')[:25],
         'completed_transportations': completed_transportations.order_by('-request__transportation_date', '-assigned_at')[:25],
     }
+
+
+@login_required
+def reports_view(request):
+    context = _build_reports_context(request.GET)
     return render(request, 'logistics/reports.html', context)
+
+
+@login_required
+def reports_pdf_view(request):
+    context = _build_reports_context(request.GET)
+    pdf = build_reports_pdf(context, request.GET)
+    filename = timezone.localdate().strftime('logistics_report_%Y_%m_%d.pdf')
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+

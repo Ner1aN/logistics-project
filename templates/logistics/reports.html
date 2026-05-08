@@ -7,6 +7,11 @@
         <h1 class="h3 mb-2">Отчетность</h1>
         <p class="page-subtitle mb-0">Сводные показатели по заявкам, статусам и выполненным перевозкам за выбранный период.</p>
     </div>
+    <div class="page-header-actions">
+        <a class="btn btn-outline-primary" href="{% url 'reports-pdf' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+            <i class="bi bi-file-earmark-pdf"></i> Скачать PDF
+        </a>
+    </div>
 </div>
 
 <div class="card section-card filter-card mb-4">
@@ -529,3 +534,4 @@
     });
 </script>
 {% endblock %}
+

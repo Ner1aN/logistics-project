@@ -275,6 +275,16 @@ class LogisticsFlowTests(TestCase):
         self.assertEqual(response.context['average_request_cost'], Decimal('15000'))
         self.assertEqual(list(response.context['driver_load_chart']), [{'label': self.driver.full_name, 'count': 1}])
 
+    def test_reports_pdf_export_available(self):
+        self._create_request(status=self.status_completed, cargo_weight=Decimal('5.00'), cost=Decimal('10000.00'))
+
+        response = self.client.get(reverse('reports-pdf'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment;', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
     def test_seed_demo_can_be_repeated_on_another_day(self):
         with patch("logistics.management.commands.seed_demo.timezone.localdate", return_value=date(2026, 4, 16)):
             call_command("seed_demo", stdout=StringIO())
@@ -287,3 +297,4 @@ class LogisticsFlowTests(TestCase):
 
         self.assertEqual(TransportationRequest.objects.count(), first_request_count)
         self.assertEqual(Transportation.objects.count(), first_transportation_count)
+
