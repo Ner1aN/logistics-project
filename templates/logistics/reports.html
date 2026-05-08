@@ -8,6 +8,9 @@
         <p class="page-subtitle mb-0">Сводные показатели по заявкам, статусам и выполненным перевозкам за выбранный период.</p>
     </div>
     <div class="page-header-actions">
+        <a class="btn btn-outline-success" href="{% url 'reports-excel' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Скачать Excel
+        </a>
         <a class="btn btn-outline-primary" href="{% url 'reports-pdf' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
             <i class="bi bi-file-earmark-pdf"></i> Скачать PDF
         </a>

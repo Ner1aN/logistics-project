@@ -10,6 +10,7 @@ from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from .forms import ClientForm, DriverForm, TransportationAssignForm, TransportationRequestForm, VehicleForm
+from .excel import build_reports_excel
 from .pdf import build_reports_pdf
 from .models import (
     Client,
@@ -492,6 +493,19 @@ def reports_pdf_view(request):
     pdf = build_reports_pdf(context, request.GET)
     filename = timezone.localdate().strftime('logistics_report_%Y_%m_%d.pdf')
     response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def reports_excel_view(request):
+    context = _build_reports_context(request.GET)
+    excel = build_reports_excel(context, request.GET)
+    filename = timezone.localdate().strftime('logistics_report_%Y_%m_%d.xlsx')
+    response = HttpResponse(
+        excel,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 

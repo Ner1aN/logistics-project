@@ -285,6 +285,19 @@ class LogisticsFlowTests(TestCase):
         self.assertIn('attachment;', response['Content-Disposition'])
         self.assertTrue(response.content.startswith(b'%PDF'))
 
+    def test_reports_excel_export_available(self):
+        self._create_request(status=self.status_completed, cargo_weight=Decimal('5.00'), cost=Decimal('10000.00'))
+
+        response = self.client.get(reverse('reports-excel'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertIn('attachment;', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'PK'))
+
     def test_seed_demo_can_be_repeated_on_another_day(self):
         with patch("logistics.management.commands.seed_demo.timezone.localdate", return_value=date(2026, 4, 16)):
             call_command("seed_demo", stdout=StringIO())
