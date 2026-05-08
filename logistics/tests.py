@@ -137,6 +137,40 @@ class LogisticsFlowTests(TestCase):
 
         self.assertEqual(request_obj.cost, Decimal('12345.00'))
 
+    def test_auto_request_cost_is_recalculated_when_weight_changes_on_edit(self):
+        request_obj = TransportationRequest.objects.create(
+            client=self.customer,
+            cargo_type=TransportationRequest.CargoType.CONCRETE,
+            cargo_name='Concrete',
+            cargo_weight=Decimal('8.50'),
+            route_from='Warehouse',
+            route_to='Site',
+            transportation_date='2026-04-15',
+            status=self.status_new,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('request-edit', args=[request_obj.pk]),
+            {
+                'client': self.customer.pk,
+                'cargo_type': TransportationRequest.CargoType.CONCRETE,
+                'cargo_name': 'Concrete',
+                'cargo_weight': '10.00',
+                'cargo_volume': '',
+                'route_from': 'Warehouse',
+                'route_to': 'Site',
+                'transportation_date': '2026-04-15',
+                'cost': '12200.00',
+                'status': self.status_new.pk,
+                'comment': '',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.cost, Decimal('14000.00'))
+
     def test_cannot_assign_busy_driver_and_vehicle_to_active_request(self):
         first_request = self._create_request(status=self.status_processing)
         first_transportation = Transportation(

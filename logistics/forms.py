@@ -75,6 +75,8 @@ class VehicleForm(BaseModelForm):
 
 
 class TransportationRequestForm(BaseModelForm):
+    COST_SOURCE_FIELDS = {'cargo_type', 'cargo_weight', 'cargo_volume'}
+
     class Meta:
         model = TransportationRequest
         fields = [
@@ -97,11 +99,37 @@ class TransportationRequestForm(BaseModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._initial_calculated_cost = None
+        if self.instance and self.instance.pk:
+            self._initial_calculated_cost = self.instance.calculate_cost()
+
         self.fields['status'].queryset = RequestStatus.objects.order_by('order', 'name')
         self.fields['cargo_type'].help_text = 'Тип груза влияет на автоматический расчет стоимости: у песка, щебня и бетона разные тарифы.'
         self.fields['cost'].required = False
-        self.fields['cost'].help_text = 'Можно оставить пустым: система рассчитает стоимость автоматически по типу груза, массе или объему.'
+        self.fields['cost'].help_text = 'Можно оставить пустым: система рассчитает стоимость автоматически по типу груза, массе или объему. При изменении типа груза, массы или объема стоимость пересчитается, если вы не вводили ее вручную.'
         self.fields['cost'].widget.attrs.setdefault('placeholder', 'Рассчитается автоматически')
+
+    def _should_recalculate_existing_cost(self):
+        if not self.instance or not self.instance.pk:
+            return False
+        if 'cost' in self.changed_data:
+            return False
+        if not self.COST_SOURCE_FIELDS.intersection(self.changed_data):
+            return False
+        return self.instance.cost == self._initial_calculated_cost
+
+    def save(self, commit=True):
+        request_obj = super().save(commit=False)
+        if self._should_recalculate_existing_cost():
+            calculated_cost = request_obj.calculate_cost()
+            if calculated_cost is not None:
+                request_obj.cost = calculated_cost
+                request_obj._cost_was_auto_calculated = True
+
+        if commit:
+            request_obj.save()
+            self.save_m2m()
+        return request_obj
 
 
 class TransportationAssignForm(BaseModelForm):
