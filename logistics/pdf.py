@@ -132,6 +132,8 @@ def build_reports_pdf(context, filters):
         [_paragraph('Просроченные заявки', styles['ReportText']), _paragraph(context['overdue_request_count'], styles['ReportText'])],
         [_paragraph('Активные в срок', styles['ReportText']), _paragraph(context['active_request_count'], styles['ReportText'])],
         [_paragraph('Выполненные перевозки', styles['ReportText']), _paragraph(context['completed_transportation_count'], styles['ReportText'])],
+        [_paragraph('Фактические рейсы ТС', styles['ReportText']), _paragraph(context['completed_transportation_trips'], styles['ReportText'])],
+        [_paragraph('Километраж выполненных перевозок', styles['ReportText']), _paragraph(f"{context['completed_transportation_distance']} км", styles['ReportText'])],
         [_paragraph('Выручка по выполненным', styles['ReportText']), _paragraph(_money(context['completed_transportation_cost']), styles['ReportText'])],
     ]
     story.append(_build_table(metrics_rows, [80 * mm, 55 * mm], colors.HexColor('#157a6e')))
@@ -147,15 +149,16 @@ def build_reports_pdf(context, filters):
     story.append(_build_table(status_rows, [70 * mm, 35 * mm, 45 * mm]))
 
     story.append(Paragraph('Загрузка водителей', styles['ReportHeading']))
-    driver_rows = [[_paragraph('Водитель', styles['ReportText']), _paragraph('Выполненных перевозок', styles['ReportText'])]]
+    driver_rows = [[_paragraph('Водитель', styles['ReportText']), _paragraph('Перевозок', styles['ReportText']), _paragraph('Рейсов', styles['ReportText'])]]
     for row in context['driver_load_stats']:
         driver_rows.append([
             _paragraph(row['driver__full_name'], styles['ReportText']),
             _paragraph(row['total'], styles['ReportText']),
+            _paragraph(row['trip_total'] or 0, styles['ReportText']),
         ])
     if len(driver_rows) == 1:
-        driver_rows.append([_paragraph('Нет данных', styles['ReportText']), _paragraph('0', styles['ReportText'])])
-    story.append(_build_table(driver_rows, [90 * mm, 45 * mm]))
+        driver_rows.append([_paragraph('Нет данных', styles['ReportText']), _paragraph('0', styles['ReportText']), _paragraph('0', styles['ReportText'])])
+    story.append(_build_table(driver_rows, [85 * mm, 28 * mm, 28 * mm]))
 
     story.append(Paragraph('Заявки в выборке', styles['ReportHeading']))
     request_rows = [[
@@ -182,6 +185,8 @@ def build_reports_pdf(context, filters):
         _paragraph('Заявка', styles['ReportText']),
         _paragraph('Водитель', styles['ReportText']),
         _paragraph('Транспорт', styles['ReportText']),
+        _paragraph('Рейсов', styles['ReportText']),
+        _paragraph('Км', styles['ReportText']),
         _paragraph('Дата завершения', styles['ReportText']),
     ]]
     for item in context['completed_transportations']:
@@ -189,11 +194,13 @@ def build_reports_pdf(context, filters):
             _paragraph(f'#{item.request.pk}', styles['ReportText']),
             _paragraph(item.driver.full_name, styles['ReportText']),
             _paragraph(item.vehicle.registration_number, styles['ReportText']),
+            _paragraph(item.trip_count, styles['ReportText']),
+            _paragraph(item.total_distance_km, styles['ReportText']),
             _paragraph(_date(item.arrival_at or item.request.transportation_date), styles['ReportText']),
         ])
     if len(transportation_rows) == 1:
-        transportation_rows.append([_paragraph('Нет данных', styles['ReportText']), '', '', ''])
-    story.append(_build_table(transportation_rows, [25 * mm, 70 * mm, 40 * mm, 45 * mm]))
+        transportation_rows.append([_paragraph('Нет данных', styles['ReportText']), '', '', '', '', ''])
+    story.append(_build_table(transportation_rows, [22 * mm, 62 * mm, 34 * mm, 18 * mm, 24 * mm, 36 * mm]))
 
     document.build(story)
     pdf = buffer.getvalue()

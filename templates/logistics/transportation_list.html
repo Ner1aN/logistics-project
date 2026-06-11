@@ -78,6 +78,8 @@
                         <div class="resource-stack">
                             <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.driver.full_name }}</span>
                             <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.vehicle.registration_number }}</span>
+                            <span class="resource-tag"><i class="bi bi-repeat"></i> {{ item.trip_count }} рейс(ов)</span>
+                            <span class="resource-tag"><i class="bi bi-signpost-split"></i> {{ item.total_distance_km }} км</span>
                         </div>
                     </td>
                     <td class="mono">{{ item.assigned_at|date:'d.m.Y H:i' }}</td>

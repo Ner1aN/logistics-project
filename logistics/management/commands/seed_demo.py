@@ -62,7 +62,11 @@ class Command(BaseCommand):
                 "status": "assigned",
                 "transportation": {
                     "driver": "Иванов Иван Иванович",
-                    "vehicle": "А123АА77",
+                    "vehicle": "У321УУ77",
+                    "trip_count": 2,
+                    "distance_parking_to_loading_km": 14.0,
+                    "distance_loading_to_customer_km": 32.0,
+                    "distance_customer_to_loading_km": 30.0,
                     "assigned_at": now - timedelta(hours=6),
                 },
             },
@@ -492,6 +496,7 @@ class Command(BaseCommand):
     def _seed_vehicles(self):
         vehicle_specs = [
             ("А123АА77", "A123AA77", "КамАЗ", "65115", 20),
+            ("У321УУ77", "У321УУ77", "ГАЗ", "Next", 10),
             ("В456ВВ77", "B456BB77", "МАЗ", "6501", 18),
             ("С789СС77", "C789CC77", "КамАЗ", "6520", 20),
             ("Е222КК77", "E222KK77", "Урал", "Next", 12),
@@ -583,6 +588,18 @@ class Command(BaseCommand):
         )
         return request_obj
 
+    def _default_route_metrics(self, request_obj):
+        seed = request_obj.pk or 1
+        return {
+            "distance_parking_to_loading_km": Decimal(8 + seed % 7),
+            "distance_loading_to_customer_km": Decimal(24 + (seed % 9) * 3),
+            "distance_customer_to_loading_km": Decimal(22 + (seed % 8) * 3),
+        }
+
+    def _metric_decimal(self, transportation_spec, field_name, default_value):
+        value = transportation_spec.get(field_name, default_value)
+        return Decimal(str(value))
+
     def _upsert_transportation(self, spec, request_obj, drivers, vehicles, statuses, admin_user):
         transportation_spec = spec.get("transportation")
         if not transportation_spec:
@@ -603,6 +620,23 @@ class Command(BaseCommand):
 
         transportation.driver = drivers[transportation_spec["driver"]]
         transportation.vehicle = vehicles[transportation_spec["vehicle"]]
+        transportation.trip_count = transportation_spec.get("trip_count") or transportation.required_trip_count or 1
+        route_metrics = self._default_route_metrics(request_obj)
+        transportation.distance_parking_to_loading_km = self._metric_decimal(
+            transportation_spec,
+            "distance_parking_to_loading_km",
+            route_metrics["distance_parking_to_loading_km"],
+        )
+        transportation.distance_loading_to_customer_km = self._metric_decimal(
+            transportation_spec,
+            "distance_loading_to_customer_km",
+            route_metrics["distance_loading_to_customer_km"],
+        )
+        transportation.distance_customer_to_loading_km = self._metric_decimal(
+            transportation_spec,
+            "distance_customer_to_loading_km",
+            route_metrics["distance_customer_to_loading_km"],
+        )
         transportation.assigned_at = transportation_spec.get("assigned_at", timezone.now())
         transportation.departure_at = transportation_spec.get("departure_at")
         transportation.arrival_at = transportation_spec.get("arrival_at")

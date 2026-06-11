@@ -35,6 +35,15 @@
                         {% if form.load_percent_preview %}
                             <div class="alert alert-info app-alert">
                                 Загрузка транспорта по выбранной машине: {{ form.load_percent_preview }}%.
+                                {% if form.required_trip_count_preview %}
+                                    Минимум для этой массы: {{ form.required_trip_count_preview }} рейс(ов).
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                        {% if form.total_distance_preview %}
+                            <div class="alert alert-secondary app-alert">
+                                Расчетный километраж: {{ form.total_distance_preview }} км.
+                                Транспортная часть стоимости: {{ form.distance_cost_preview }} ₽.
                             </div>
                         {% endif %}
 

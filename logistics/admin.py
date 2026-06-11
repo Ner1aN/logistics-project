@@ -57,6 +57,7 @@ class RequestStatusHistoryInline(admin.TabularInline):
 class TransportationInline(admin.StackedInline):
     model = Transportation
     extra = 0
+    readonly_fields = ('total_distance_km', 'distance_cost', 'load_percent')
 
 
 @admin.register(TransportationRequest)
@@ -78,8 +79,9 @@ class RequestStatusHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(Transportation)
 class TransportationAdmin(admin.ModelAdmin):
-    list_display = ('request', 'vehicle', 'driver', 'assigned_at', 'departure_at', 'arrival_at')
+    list_display = ('request', 'vehicle', 'driver', 'trip_count', 'total_distance_km', 'assigned_at', 'departure_at', 'arrival_at')
     list_filter = ('assigned_at', 'departure_at', 'arrival_at')
+    readonly_fields = ('total_distance_km', 'distance_cost', 'load_percent')
     search_fields = (
         'request__client__name',
         'request__route_from',

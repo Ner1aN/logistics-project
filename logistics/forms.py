@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
@@ -42,6 +42,26 @@ class DateTimeInput(forms.DateTimeInput):
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('format', '%Y-%m-%dT%H:%M')
+        super().__init__(*args, **kwargs)
+
+
+class DecimalNumberInput(forms.NumberInput):
+    input_type = 'number'
+
+    def __init__(self, *args, **kwargs):
+        attrs = kwargs.setdefault('attrs', {})
+        attrs.setdefault('min', '0')
+        attrs.setdefault('step', '0.01')
+        super().__init__(*args, **kwargs)
+
+
+class PositiveIntegerInput(forms.NumberInput):
+    input_type = 'number'
+
+    def __init__(self, *args, **kwargs):
+        attrs = kwargs.setdefault('attrs', {})
+        attrs.setdefault('min', '1')
+        attrs.setdefault('step', '1')
         super().__init__(*args, **kwargs)
 
 
@@ -135,8 +155,23 @@ class TransportationRequestForm(BaseModelForm):
 class TransportationAssignForm(BaseModelForm):
     class Meta:
         model = Transportation
-        fields = ['vehicle', 'driver', 'assigned_at', 'departure_at', 'arrival_at', 'notes']
+        fields = [
+            'vehicle',
+            'driver',
+            'trip_count',
+            'distance_parking_to_loading_km',
+            'distance_loading_to_customer_km',
+            'distance_customer_to_loading_km',
+            'assigned_at',
+            'departure_at',
+            'arrival_at',
+            'notes',
+        ]
         widgets = {
+            'trip_count': PositiveIntegerInput(),
+            'distance_parking_to_loading_km': DecimalNumberInput(),
+            'distance_loading_to_customer_km': DecimalNumberInput(),
+            'distance_customer_to_loading_km': DecimalNumberInput(),
             'assigned_at': DateTimeInput(),
             'departure_at': DateTimeInput(),
             'arrival_at': DateTimeInput(),
@@ -150,6 +185,9 @@ class TransportationAssignForm(BaseModelForm):
             self.request_obj = self.instance.request
 
         self.load_percent_preview = None
+        self.required_trip_count_preview = None
+        self.total_distance_preview = None
+        self.distance_cost_preview = None
         current_vehicle_ids = {self.instance.vehicle_id} if self.instance and self.instance.pk else set()
         current_driver_ids = {self.instance.driver_id} if self.instance and self.instance.pk else set()
 
@@ -163,8 +201,13 @@ class TransportationAssignForm(BaseModelForm):
 
         self.fields['vehicle'].queryset = Vehicle.objects.filter(Q(is_available=True) | Q(pk__in=current_vehicle_ids)).distinct()
         self.fields['driver'].queryset = Driver.objects.filter(Q(is_available=True) | Q(pk__in=current_driver_ids)).distinct()
-        self.fields['vehicle'].help_text = 'Если в заявке указана масса, система проверит грузоподъемность выбранного транспорта.'
+        self.fields['vehicle'].help_text = 'Если в заявке указана масса, система проверит суммарную грузоподъемность выбранного транспорта за указанное число рейсов.'
+        self.fields['trip_count'].help_text = 'Укажите, сколько доставок сделает это ТС в рамках одной заявки.'
+        self.fields['distance_parking_to_loading_km'].help_text = 'Плечо 1: от стоянки транспорта до места погрузки.'
+        self.fields['distance_loading_to_customer_km'].help_text = 'Плечо 2: от места погрузки до заказчика. Умножается на количество рейсов.'
+        self.fields['distance_customer_to_loading_km'].help_text = 'Плечо 3: возврат от заказчика к месту погрузки между повторными рейсами.'
         self._set_load_preview()
+        self._set_distance_preview()
 
     def _set_load_preview(self):
         if not self.request_obj or self.request_obj.cargo_weight is None:
@@ -183,14 +226,59 @@ class TransportationAssignForm(BaseModelForm):
         if not vehicle or not vehicle.capacity_tons:
             return
 
+        trip_count = self._get_trip_count_value()
+        self.required_trip_count_preview = int(
+            (self.request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING)
+        )
+        total_capacity = vehicle.capacity_tons * trip_count
+        if not total_capacity:
+            return
+
         self.load_percent_preview = (
-            self.request_obj.cargo_weight / vehicle.capacity_tons * Decimal('100')
+            self.request_obj.cargo_weight / total_capacity * Decimal('100')
         ).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+
+    def _get_trip_count_value(self):
+        raw_value = self.data.get('trip_count') if self.is_bound else getattr(self.instance, 'trip_count', None)
+        try:
+            return max(int(raw_value or 1), 1)
+        except (TypeError, ValueError):
+            return 1
+
+    def _get_decimal_value(self, field_name):
+        raw_value = self.data.get(field_name) if self.is_bound else getattr(self.instance, field_name, None)
+        try:
+            return Decimal(str(raw_value or 0))
+        except (TypeError, ValueError):
+            return Decimal('0')
+
+    def _set_distance_preview(self):
+        trip_count = self._get_trip_count_value()
+        parking_to_loading = self._get_decimal_value('distance_parking_to_loading_km')
+        loading_to_customer = self._get_decimal_value('distance_loading_to_customer_km')
+        customer_to_loading = self._get_decimal_value('distance_customer_to_loading_km')
+        return_trip_count = max(trip_count - 1, 0)
+        total_distance = (
+            parking_to_loading
+            + loading_to_customer * trip_count
+            + customer_to_loading * return_trip_count
+        ).quantize(Decimal('0.01'))
+
+        if total_distance:
+            self.total_distance_preview = total_distance
+            self.distance_cost_preview = (
+                total_distance * TransportationRequest.DISTANCE_RATE_PER_KM
+            ).quantize(Decimal('0.01'))
 
     def clean(self):
         cleaned_data = super().clean()
         vehicle = cleaned_data.get('vehicle')
+        trip_count = cleaned_data.get('trip_count') or 1
         if self.request_obj and vehicle and self.request_obj.cargo_weight is not None:
-            if vehicle.capacity_tons and self.request_obj.cargo_weight > vehicle.capacity_tons:
-                self.add_error('vehicle', 'Выбранное транспортное средство не подходит по грузоподъемности.')
+            total_capacity = vehicle.capacity_tons * trip_count if vehicle.capacity_tons else None
+            if total_capacity and self.request_obj.cargo_weight > total_capacity:
+                required_trips = int(
+                    (self.request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING)
+                )
+                self.add_error('trip_count', f'Для этой массы груза нужно минимум {required_trips} рейс(ов) выбранного транспорта.')
         return cleaned_data

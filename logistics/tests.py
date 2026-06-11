@@ -187,6 +187,10 @@ class LogisticsFlowTests(TestCase):
             {
                 'driver': self.driver.pk,
                 'vehicle': self.vehicle.pk,
+                'trip_count': '1',
+                'distance_parking_to_loading_km': '0',
+                'distance_loading_to_customer_km': '0',
+                'distance_customer_to_loading_km': '0',
                 'assigned_at': '2026-04-15T10:00',
                 'departure_at': '',
                 'arrival_at': '',
@@ -209,6 +213,10 @@ class LogisticsFlowTests(TestCase):
             {
                 'driver': self.driver.pk,
                 'vehicle': self.vehicle.pk,
+                'trip_count': '1',
+                'distance_parking_to_loading_km': '0',
+                'distance_loading_to_customer_km': '0',
+                'distance_customer_to_loading_km': '0',
                 'assigned_at': '2026-04-15T10:00',
                 'departure_at': '',
                 'arrival_at': '',
@@ -217,8 +225,45 @@ class LogisticsFlowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Выбранное транспортное средство не подходит по грузоподъемности')
+        self.assertContains(response, 'Для этой массы груза нужно минимум 2 рейс(ов)')
         self.assertFalse(hasattr(request_obj, 'transportation'))
+
+    def test_can_assign_multiple_trips_and_recalculate_cost_by_distance(self):
+        request_obj = TransportationRequest.objects.create(
+            client=self.customer,
+            cargo_type=TransportationRequest.CargoType.SAND,
+            cargo_name='Sand',
+            cargo_weight=Decimal('12.00'),
+            route_from='Warehouse',
+            route_to='Site',
+            transportation_date='2026-04-15',
+            status=self.status_processing,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('request-assign', args=[request_obj.pk]),
+            {
+                'driver': self.driver.pk,
+                'vehicle': self.vehicle.pk,
+                'trip_count': '2',
+                'distance_parking_to_loading_km': '5',
+                'distance_loading_to_customer_km': '20',
+                'distance_customer_to_loading_km': '18',
+                'assigned_at': '2026-04-15T10:00',
+                'departure_at': '',
+                'arrival_at': '',
+                'notes': 'Two trips',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        request_obj.refresh_from_db()
+        transportation = request_obj.transportation
+        self.assertEqual(transportation.trip_count, 2)
+        self.assertEqual(transportation.total_distance_km, Decimal('63.00'))
+        self.assertEqual(transportation.load_percent, Decimal('60.0'))
+        self.assertEqual(request_obj.cost, Decimal('14900.00'))
 
     def test_cannot_increase_request_weight_above_assigned_vehicle_capacity(self):
         request_obj = self._create_request(status=self.status_processing, cargo_weight=Decimal('8.00'))
@@ -248,7 +293,7 @@ class LogisticsFlowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Масса груза превышает грузоподъемность назначенного транспорта')
+        self.assertContains(response, 'Масса груза превышает суммарную грузоподъемность назначенного транспорта')
         request_obj.refresh_from_db()
         self.assertEqual(request_obj.cargo_weight, Decimal('8.00'))
 

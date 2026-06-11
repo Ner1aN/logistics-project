@@ -114,6 +114,23 @@
 </div>
 
 <div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Километраж выполненных перевозок</div>
+            <div class="summary-value">{{ completed_transportation_distance }} км</div>
+            <p class="mb-0 table-note">Сумма трех плеч маршрута с учетом повторных рейсов ТС.</p>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card summary-panel h-100">
+            <div class="summary-label">Фактические рейсы ТС</div>
+            <div class="summary-value">{{ completed_transportation_trips }}</div>
+            <p class="mb-0 table-note">Количество доставок, выполненных транспортом внутри заявок.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
     <div class="col-md-6 col-xl-3">
         <div class="card summary-panel h-100">
             <div class="summary-label">Средняя стоимость</div>
@@ -197,7 +214,7 @@
             <div class="card-header border-0 px-4 pt-4 pb-0">
                 <div class="section-titlebar">
                     <strong>Загрузка водителей</strong>
-                    <span class="section-note">Количество выполненных перевозок по каждому водителю</span>
+                    <span class="section-note">Количество фактических рейсов по каждому водителю</span>
                 </div>
             </div>
             <div class="card-body detail-card-body">
@@ -212,7 +229,7 @@
             <div class="card-header border-0 px-4 pt-4 pb-0">
                 <div class="section-titlebar">
                     <strong>Рейтинг водителей</strong>
-                    <span class="section-note">Выполненные рейсы за выбранный период</span>
+                    <span class="section-note">Выполненные перевозки и фактические рейсы за выбранный период</span>
                 </div>
             </div>
             <div class="table-responsive">
@@ -221,6 +238,7 @@
                         <tr>
                             <th>Водитель</th>
                             <th>Перевозок</th>
+                            <th>Рейсов</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -228,9 +246,10 @@
                         <tr>
                             <td>{{ row.driver__full_name }}</td>
                             <td class="mono">{{ row.total }}</td>
+                            <td class="mono">{{ row.trip_total|default:0 }}</td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="2" class="text-center text-muted py-4">Нет выполненных перевозок.</td></tr>
+                        <tr><td colspan="3" class="text-center text-muted py-4">Нет выполненных перевозок.</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -324,6 +343,8 @@
                             <th>Заявка</th>
                             <th>Водитель</th>
                             <th>Транспорт</th>
+                            <th>Рейсов</th>
+                            <th>Км</th>
                             <th>Дата завершения</th>
                         </tr>
                     </thead>
@@ -333,6 +354,8 @@
                             <td><a class="table-link mono" href="{% url 'transportation-detail' item.pk %}">#{{ item.request.pk }}</a></td>
                             <td>{{ item.driver.full_name }}</td>
                             <td>{{ item.vehicle.registration_number }}</td>
+                            <td class="mono">{{ item.trip_count }}</td>
+                            <td class="mono">{{ item.total_distance_km }}</td>
                             <td class="mono">
                                 {% if item.arrival_at %}
                                     {{ item.arrival_at|date:'d.m.Y H:i' }}
@@ -342,7 +365,7 @@
                             </td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted py-4">Выполненные перевозки не найдены.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-4">Выполненные перевозки не найдены.</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -476,7 +499,7 @@
         data: {
             labels: completedItems.map(item => item.label),
             datasets: [{
-                label: 'Выполненные перевозки',
+                label: 'Выполненные рейсы',
                 data: completedItems.map(item => item.count),
                 backgroundColor: completedItems.map((_, index) => chartPalette[index % chartPalette.length]),
                 borderRadius: 12

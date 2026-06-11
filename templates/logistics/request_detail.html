@@ -61,6 +61,12 @@
                     <dt class="col-sm-4">Стоимость</dt>
                     <dd class="col-sm-8">{{ request_obj.cost }} ₽</dd>
 
+                    <dt class="col-sm-4">Стоимость груза</dt>
+                    <dd class="col-sm-8">{{ request_obj.calculate_cargo_cost }} ₽</dd>
+
+                    <dt class="col-sm-4">Стоимость километража</dt>
+                    <dd class="col-sm-8">{{ request_obj.calculate_distance_cost }} ₽</dd>
+
                     <dt class="col-sm-4">Комментарий</dt>
                     <dd class="col-sm-8">{{ request_obj.comment|default:'—' }}</dd>
 
@@ -123,6 +129,32 @@
                                     —
                                 {% endif %}
                             </dd>
+
+                            <dt class="col-sm-5">Рейсов ТС</dt>
+                            <dd class="col-sm-7">
+                                {{ transportation.trip_count }}
+                                {% if transportation.required_trip_count %}
+                                    <span class="table-note">/ минимум {{ transportation.required_trip_count }}</span>
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-5">Суммарная грузоподъемность</dt>
+                            <dd class="col-sm-7">{{ transportation.total_capacity_tons|default:'—' }} т</dd>
+
+                            <dt class="col-sm-5">Плечо 1</dt>
+                            <dd class="col-sm-7">{{ transportation.distance_parking_to_loading_km }} км</dd>
+
+                            <dt class="col-sm-5">Плечо 2</dt>
+                            <dd class="col-sm-7">{{ transportation.distance_loading_to_customer_km }} км</dd>
+
+                            <dt class="col-sm-5">Плечо 3</dt>
+                            <dd class="col-sm-7">{{ transportation.distance_customer_to_loading_km }} км</dd>
+
+                            <dt class="col-sm-5">Общий километраж</dt>
+                            <dd class="col-sm-7">{{ transportation.total_distance_km }} км</dd>
+
+                            <dt class="col-sm-5">Стоимость километража</dt>
+                            <dd class="col-sm-7">{{ transportation.distance_cost }} ₽</dd>
 
                             <dt class="col-sm-5">Назначена</dt>
                             <dd class="col-sm-7">{{ transportation.assigned_at|date:'d.m.Y H:i' }}</dd>

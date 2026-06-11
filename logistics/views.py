@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -411,15 +413,21 @@ def _build_reports_context(params):
     )
     average_request_cost = request_queryset.aggregate(avg=Avg('cost'))['avg'] or 0
     completed_request_percent = round(completed_request_count / request_total_count * 100, 1) if request_total_count else 0
+    completed_transportation_distance = sum(
+        (item.total_distance_km for item in completed_transportations),
+        Decimal('0.00'),
+    )
+    completed_transportation_trips = completed_transportations.aggregate(total=Sum('trip_count'))['total'] or 0
 
     driver_load_stats = completed_transportations.values('driver__full_name').annotate(
         total=Count('id'),
-    ).order_by('-total', 'driver__full_name')
+        trip_total=Sum('trip_count'),
+    ).order_by('-trip_total', '-total', 'driver__full_name')
 
     driver_load_chart = [
         {
             'label': row['driver__full_name'],
-            'count': row['total'],
+            'count': row['trip_total'] or 0,
         }
         for row in driver_load_stats
     ]
@@ -465,6 +473,8 @@ def _build_reports_context(params):
         'request_total_count': request_total_count,
         'completed_transportation_count': completed_transportations.count(),
         'completed_transportation_cost': completed_transportations.aggregate(total=Sum('request__cost'))['total'] or 0,
+        'completed_transportation_distance': completed_transportation_distance,
+        'completed_transportation_trips': completed_transportation_trips,
         'average_request_cost': average_request_cost,
         'completed_request_percent': completed_request_percent,
         'overdue_request_count': overdue_request_count,

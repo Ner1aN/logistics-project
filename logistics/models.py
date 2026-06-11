@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -124,6 +124,7 @@ class TransportationRequest(TimeStampedModel):
 
     TERMINAL_STATUS_CODES = {'completed', 'cancelled'}
     BASE_RATE = Decimal('2000')
+    DISTANCE_RATE_PER_KM = Decimal('100')
     CARGO_TYPE_RATES = {
         CargoType.SAND: {
             'ton': Decimal('550'),
@@ -193,7 +194,7 @@ class TransportationRequest(TimeStampedModel):
     @property
     def cargo_tariff_summary(self):
         rates = self.get_cargo_rates()
-        return f"{rates['ton']} ₽/т, {rates['m3']} ₽/м3"
+        return f"{rates['ton']} ₽/т, {rates['m3']} ₽/м3, {self.DISTANCE_RATE_PER_KM} ₽/км"
 
     @property
     def status_badge_class(self):
@@ -206,13 +207,32 @@ class TransportationRequest(TimeStampedModel):
             'cancelled': 'danger',
         }.get(self.status.code, 'secondary')
 
-    def calculate_cost(self):
+    def calculate_cargo_cost(self):
         rates = self.get_cargo_rates()
         if self.cargo_weight is not None:
             return (self.BASE_RATE + self.cargo_weight * rates['ton']).quantize(Decimal('0.01'))
         if self.cargo_volume is not None:
             return (self.BASE_RATE + self.cargo_volume * rates['m3']).quantize(Decimal('0.01'))
         return None
+
+    def get_transportation_for_cost(self):
+        if hasattr(self, 'transportation'):
+            return self.transportation
+        if self.pk:
+            return Transportation.objects.filter(request=self).first()
+        return None
+
+    def calculate_distance_cost(self, transportation=None):
+        transportation = transportation if transportation is not None else self.get_transportation_for_cost()
+        if not transportation:
+            return Decimal('0.00')
+        return (transportation.total_distance_km * self.DISTANCE_RATE_PER_KM).quantize(Decimal('0.01'))
+
+    def calculate_cost(self, transportation=None):
+        cargo_cost = self.calculate_cargo_cost()
+        if cargo_cost is None:
+            return None
+        return (cargo_cost + self.calculate_distance_cost(transportation)).quantize(Decimal('0.01'))
 
     def get_cargo_rates(self):
         return self.CARGO_TYPE_RATES.get(self.cargo_type, self.CARGO_TYPE_RATES[self.CargoType.SAND])
@@ -229,13 +249,15 @@ class TransportationRequest(TimeStampedModel):
 
         if transportation and self.cargo_weight is not None:
             vehicle_capacity = transportation.vehicle.capacity_tons
-            if vehicle_capacity and self.cargo_weight > vehicle_capacity:
+            trip_count = transportation.trip_count or 1
+            total_capacity = vehicle_capacity * trip_count if vehicle_capacity else None
+            if total_capacity and self.cargo_weight > total_capacity:
                 raise ValidationError({
-                    'cargo_weight': f'Масса груза превышает грузоподъемность назначенного транспорта ({vehicle_capacity} т).'
+                    'cargo_weight': f'Масса груза превышает суммарную грузоподъемность назначенного транспорта за {trip_count} рейс(ов) ({total_capacity} т).'
                 })
 
     def save(self, *args, **kwargs):
-        cost_was_auto_calculated = False
+        cost_was_auto_calculated = getattr(self, '_cost_was_auto_calculated', False)
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             update_fields = set(update_fields)
@@ -323,6 +345,10 @@ class Transportation(TimeStampedModel):
     assigned_at = models.DateTimeField('Дата назначения', default=timezone.now)
     departure_at = models.DateTimeField('Дата начала', null=True, blank=True)
     arrival_at = models.DateTimeField('Дата завершения', null=True, blank=True)
+    trip_count = models.PositiveIntegerField('Количество рейсов ТС', default=1)
+    distance_parking_to_loading_km = models.DecimalField('Стоянка - место погрузки, км', max_digits=8, decimal_places=2, default=0)
+    distance_loading_to_customer_km = models.DecimalField('Погрузка - заказчик, км', max_digits=8, decimal_places=2, default=0)
+    distance_customer_to_loading_km = models.DecimalField('Заказчик - место погрузки, км', max_digits=8, decimal_places=2, default=0)
     notes = models.TextField('Примечание', blank=True)
 
     class Meta:
@@ -336,6 +362,38 @@ class Transportation(TimeStampedModel):
         self._loaded_vehicle_id = self.vehicle_id
 
     @property
+    def return_trip_count(self):
+        return max((self.trip_count or 1) - 1, 0)
+
+    @property
+    def total_distance_km(self):
+        return (
+            (self.distance_parking_to_loading_km or Decimal('0'))
+            + (self.distance_loading_to_customer_km or Decimal('0')) * (self.trip_count or 1)
+            + (self.distance_customer_to_loading_km or Decimal('0')) * self.return_trip_count
+        ).quantize(Decimal('0.01'))
+
+    @property
+    def distance_cost(self):
+        return (self.total_distance_km * TransportationRequest.DISTANCE_RATE_PER_KM).quantize(Decimal('0.01'))
+
+    @property
+    def required_trip_count(self):
+        if not self.request_id or not self.vehicle_id:
+            return None
+        if not hasattr(self, 'request') or not hasattr(self, 'vehicle'):
+            return None
+        if self.request.cargo_weight is None or not self.vehicle.capacity_tons:
+            return None
+        return int((self.request.cargo_weight / self.vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING))
+
+    @property
+    def total_capacity_tons(self):
+        if not self.vehicle_id or not hasattr(self, 'vehicle') or not self.vehicle.capacity_tons:
+            return None
+        return (self.vehicle.capacity_tons * (self.trip_count or 1)).quantize(Decimal('0.01'))
+
+    @property
     def load_percent(self):
         if not self.request_id or not self.vehicle_id:
             return None
@@ -346,8 +404,12 @@ class Transportation(TimeStampedModel):
         if self.request.cargo_weight is None or not self.vehicle.capacity_tons:
             return None
 
+        total_capacity = self.vehicle.capacity_tons * (self.trip_count or 1)
+        if not total_capacity:
+            return None
+
         return (
-            self.request.cargo_weight / self.vehicle.capacity_tons * Decimal('100')
+            self.request.cargo_weight / total_capacity * Decimal('100')
         ).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
     def clean(self):
@@ -355,6 +417,15 @@ class Transportation(TimeStampedModel):
         errors = {}
         if self.departure_at and self.arrival_at and self.arrival_at < self.departure_at:
             errors['arrival_at'] = 'Дата завершения не может быть раньше даты начала.'
+        if not self.trip_count or self.trip_count < 1:
+            errors['trip_count'] = 'Количество рейсов должно быть не меньше 1.'
+        for field_name in [
+            'distance_parking_to_loading_km',
+            'distance_loading_to_customer_km',
+            'distance_customer_to_loading_km',
+        ]:
+            if getattr(self, field_name) is not None and getattr(self, field_name) < 0:
+                errors[field_name] = 'Километраж не может быть отрицательным.'
 
         request_obj = None
         if self.request_id:
@@ -364,8 +435,11 @@ class Transportation(TimeStampedModel):
 
         if request_obj is not None and self.vehicle_id and request_obj.cargo_weight is not None:
             vehicle = self.vehicle if hasattr(self, 'vehicle') else Vehicle.objects.get(pk=self.vehicle_id)
-            if vehicle.capacity_tons and request_obj.cargo_weight > vehicle.capacity_tons:
-                errors['vehicle'] = 'Выбранное транспортное средство не подходит по грузоподъемности.'
+            trip_count = self.trip_count or 1
+            total_capacity = vehicle.capacity_tons * trip_count if vehicle.capacity_tons else None
+            if total_capacity and request_obj.cargo_weight > total_capacity:
+                required_trips = int((request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING))
+                errors['trip_count'] = f'Для этой массы груза нужно минимум {required_trips} рейс(ов) выбранного транспорта.'
 
         conflicts = active_transportations(exclude_transportation_id=self.pk)
         if self.driver_id:
@@ -380,13 +454,35 @@ class Transportation(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
+    def _get_request_auto_cost_state(self):
+        if not self.request_id:
+            return None, set()
+
+        request_obj = TransportationRequest.objects.filter(pk=self.request_id).first()
+        if request_obj is None:
+            return None, set()
+
+        candidates = {
+            request_obj.calculate_cargo_cost(),
+            request_obj.calculate_cost(),
+        }
+        return request_obj, {value for value in candidates if value is not None}
+
     def save(self, *args, **kwargs):
         self.full_clean()
+        request_obj, previous_auto_costs = self._get_request_auto_cost_state()
 
         previous_driver_id = None if self._state.adding else self._loaded_driver_id
         previous_vehicle_id = None if self._state.adding else self._loaded_vehicle_id
 
         super().save(*args, **kwargs)
+
+        if request_obj is not None and request_obj.cost in previous_auto_costs:
+            new_cost = request_obj.calculate_cost(transportation=self)
+            if new_cost is not None and request_obj.cost != new_cost:
+                request_obj.cost = new_cost
+                request_obj._cost_was_auto_calculated = True
+                request_obj.save(update_fields=['cost', 'updated_at'])
 
         if self.request.status.code in {'new', 'processing'}:
             assigned_status = get_status('assigned')

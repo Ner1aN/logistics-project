@@ -16,8 +16,20 @@ def _money(value):
     return float(value or 0)
 
 
+def _number(value):
+    return float(value or 0)
+
+
 def _date(value):
     return value.strftime('%d.%m.%Y') if value else ''
+
+
+def _request_transportation_value(request, attr, default=''):
+    transportation = getattr(request, 'transportation', None)
+    if not transportation:
+        return default
+    value = getattr(transportation, attr)
+    return value() if callable(value) else value
 
 
 def _autosize_columns(sheet):
@@ -80,6 +92,8 @@ def build_reports_excel(context, filters):
         ('Просроченные заявки', context['overdue_request_count']),
         ('Активные в срок', context['active_request_count']),
         ('Выполненные перевозки', context['completed_transportation_count']),
+        ('Фактические рейсы ТС', context['completed_transportation_trips']),
+        ('Километраж выполненных перевозок, км', _number(context['completed_transportation_distance'])),
         ('Выручка по выполненным', _money(context['completed_transportation_cost'])),
     ]
     for row in metrics:
@@ -88,7 +102,7 @@ def build_reports_excel(context, filters):
     for row in summary_sheet.iter_rows(min_row=5):
         for cell in row:
             cell.alignment = Alignment(vertical='center')
-    for row_number in range(10, 18):
+    for row_number in range(10, 20):
         summary_sheet[f'A{row_number}'].fill = SUMMARY_FILL
         summary_sheet[f'B{row_number}'].fill = SUMMARY_FILL
     _autosize_columns(summary_sheet)
@@ -106,7 +120,7 @@ def build_reports_excel(context, filters):
     requests_sheet = workbook.create_sheet('Заявки')
     _append_table(
         requests_sheet,
-        ['ID', 'Клиент', 'Тип груза', 'Описание груза', 'Маршрут', 'Дата', 'Статус', 'Стоимость'],
+        ['ID', 'Клиент', 'Тип груза', 'Описание груза', 'Маршрут', 'Рейсов ТС', 'Километраж, км', 'Дата', 'Статус', 'Стоимость'],
         [
             [
                 request.pk,
@@ -114,6 +128,8 @@ def build_reports_excel(context, filters):
                 request.get_cargo_type_display(),
                 request.cargo_name,
                 f'{request.route_from} -> {request.route_to}',
+                _request_transportation_value(request, 'trip_count'),
+                _number(_request_transportation_value(request, 'total_distance_km', 0)),
                 _date(request.transportation_date),
                 request.status.name,
                 _money(request.cost),
@@ -125,13 +141,33 @@ def build_reports_excel(context, filters):
     transportations_sheet = workbook.create_sheet('Выполненные перевозки')
     _append_table(
         transportations_sheet,
-        ['Заявка', 'Клиент', 'Водитель', 'Транспорт', 'Дата перевозки', 'Дата завершения', 'Стоимость'],
+        [
+            'Заявка',
+            'Клиент',
+            'Водитель',
+            'Транспорт',
+            'Рейсов ТС',
+            'Стоянка-погрузка, км',
+            'Погрузка-заказчик, км',
+            'Заказчик-погрузка, км',
+            'Общий километраж, км',
+            'Стоимость километража',
+            'Дата перевозки',
+            'Дата завершения',
+            'Стоимость',
+        ],
         [
             [
                 item.request.pk,
                 item.request.client.name,
                 item.driver.full_name,
                 item.vehicle.registration_number,
+                item.trip_count,
+                _number(item.distance_parking_to_loading_km),
+                _number(item.distance_loading_to_customer_km),
+                _number(item.distance_customer_to_loading_km),
+                _number(item.total_distance_km),
+                _money(item.distance_cost),
                 _date(item.request.transportation_date),
                 _date(item.arrival_at or item.request.transportation_date),
                 _money(item.request.cost),
@@ -143,9 +179,9 @@ def build_reports_excel(context, filters):
     drivers_sheet = workbook.create_sheet('Загрузка водителей')
     _append_table(
         drivers_sheet,
-        ['Водитель', 'Выполненных перевозок'],
+        ['Водитель', 'Выполненных перевозок', 'Фактических рейсов'],
         [
-            [row['driver__full_name'], row['total']]
+            [row['driver__full_name'], row['total'], row['trip_total'] or 0]
             for row in context['driver_load_stats']
         ],
     )

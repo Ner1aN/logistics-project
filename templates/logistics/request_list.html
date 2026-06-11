@@ -111,6 +111,8 @@
                             <div class="resource-stack">
                                 <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.transportation.driver.full_name }}</span>
                                 <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.transportation.vehicle.registration_number }}</span>
+                                <span class="resource-tag"><i class="bi bi-repeat"></i> {{ item.transportation.trip_count }} рейс(ов)</span>
+                                <span class="resource-tag"><i class="bi bi-signpost-split"></i> {{ item.transportation.total_distance_km }} км</span>
                             </div>
                         {% else %}
                             <span class="table-note">Еще не назначено</span>
