@@ -24,12 +24,12 @@ def _date(value):
     return value.strftime('%d.%m.%Y') if value else ''
 
 
-def _request_transportation_value(request, attr, default=''):
-    transportation = getattr(request, 'transportation', None)
-    if not transportation:
-        return default
-    value = getattr(transportation, attr)
-    return value() if callable(value) else value
+def _request_trip_count(request):
+    return sum((item.trip_count or 0 for item in request.transportations.all()), 0)
+
+
+def _request_total_distance(request):
+    return request.total_distance_km()
 
 
 def _autosize_columns(sheet):
@@ -128,8 +128,8 @@ def build_reports_excel(context, filters):
                 request.get_cargo_type_display(),
                 request.cargo_name,
                 f'{request.route_from} -> {request.route_to}',
-                _request_transportation_value(request, 'trip_count'),
-                _number(_request_transportation_value(request, 'total_distance_km', 0)),
+                _request_trip_count(request),
+                _number(_request_total_distance(request)),
                 _date(request.transportation_date),
                 request.status.name,
                 _money(request.cost),

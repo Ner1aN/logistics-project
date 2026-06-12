@@ -107,12 +107,11 @@
                     </td>
                     <td>{{ item.transportation_date|date:'d.m.Y' }}</td>
                     <td>
-                        {% if item.transportation %}
+                        {% if item.transportations.all %}
                             <div class="resource-stack">
-                                <span class="resource-tag"><i class="bi bi-person-badge"></i> {{ item.transportation.driver.full_name }}</span>
-                                <span class="resource-tag"><i class="bi bi-truck"></i> {{ item.transportation.vehicle.registration_number }}</span>
-                                <span class="resource-tag"><i class="bi bi-repeat"></i> {{ item.transportation.trip_count }} рейс(ов)</span>
-                                <span class="resource-tag"><i class="bi bi-signpost-split"></i> {{ item.transportation.total_distance_km }} км</span>
+                                {% for transportation in item.transportations.all %}
+                                    <span class="resource-tag"><i class="bi bi-truck"></i> {{ transportation.vehicle.registration_number }} · {{ transportation.trip_count }} рейс(ов) · {{ transportation.total_distance_km }} км</span>
+                                {% endfor %}
                             </div>
                         {% else %}
                             <span class="table-note">Еще не назначено</span>

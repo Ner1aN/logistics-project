@@ -34,9 +34,16 @@
                         {% endif %}
                         {% if form.load_percent_preview %}
                             <div class="alert alert-info app-alert">
-                                Загрузка транспорта по выбранной машине: {{ form.load_percent_preview }}%.
+                                Если груз везет только выбранное ТС: загрузка {{ form.load_percent_preview }}%.
                                 {% if form.required_trip_count_preview %}
                                     Минимум для этой массы: {{ form.required_trip_count_preview }} рейс(ов).
+                                {% endif %}
+                                {% if form.assigned_capacity_preview %}
+                                    Суммарная грузоподъемность по заявке с учетом этого назначения:
+                                    {{ form.assigned_capacity_preview }} т
+                                    {% if form.capacity_coverage_preview %}
+                                        ({{ form.capacity_coverage_preview }}% от массы груза).
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         {% endif %}

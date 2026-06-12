@@ -200,9 +200,9 @@ class LogisticsFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Водитель уже назначен')
         self.assertContains(response, 'Транспорт уже назначен')
-        self.assertFalse(hasattr(second_request, 'transportation'))
+        self.assertFalse(second_request.transportations.exists())
 
-    def test_cannot_assign_vehicle_when_cargo_exceeds_capacity(self):
+    def test_can_assign_vehicle_when_single_vehicle_capacity_is_partial(self):
         request_obj = self._create_request(
             status=self.status_processing,
             cargo_weight=Decimal('12.00'),
@@ -224,9 +224,8 @@ class LogisticsFlowTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Для этой массы груза нужно минимум 2 рейс(ов)')
-        self.assertFalse(hasattr(request_obj, 'transportation'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(request_obj.transportations.count(), 1)
 
     def test_can_assign_multiple_trips_and_recalculate_cost_by_distance(self):
         request_obj = TransportationRequest.objects.create(
@@ -259,13 +258,54 @@ class LogisticsFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         request_obj.refresh_from_db()
-        transportation = request_obj.transportation
+        transportation = request_obj.transportations.get()
         self.assertEqual(transportation.trip_count, 2)
         self.assertEqual(transportation.total_distance_km, Decimal('63.00'))
         self.assertEqual(transportation.load_percent, Decimal('60.0'))
         self.assertEqual(request_obj.cost, Decimal('14900.00'))
 
-    def test_cannot_increase_request_weight_above_assigned_vehicle_capacity(self):
+    def test_can_assign_multiple_vehicles_to_one_request(self):
+        second_driver = Driver.objects.create(full_name='Second Driver', phone='+79990000002', license_number='XYZ456')
+        second_vehicle = Vehicle.objects.create(registration_number='B456BB77', brand='MAZ', model='6501', capacity_tons=8)
+        request_obj = TransportationRequest.objects.create(
+            client=self.customer,
+            cargo_type=TransportationRequest.CargoType.CRUSHED_STONE,
+            cargo_name='Crushed stone',
+            cargo_weight=Decimal('18.00'),
+            route_from='Warehouse',
+            route_to='Site',
+            transportation_date='2026-04-15',
+            status=self.status_processing,
+            created_by=self.user,
+        )
+
+        first = Transportation.objects.create(
+            request=request_obj,
+            driver=self.driver,
+            vehicle=self.vehicle,
+            trip_count=1,
+            distance_parking_to_loading_km=Decimal('5.00'),
+            distance_loading_to_customer_km=Decimal('20.00'),
+            distance_customer_to_loading_km=Decimal('0.00'),
+        )
+        second = Transportation.objects.create(
+            request=request_obj,
+            driver=second_driver,
+            vehicle=second_vehicle,
+            trip_count=1,
+            distance_parking_to_loading_km=Decimal('6.00'),
+            distance_loading_to_customer_km=Decimal('18.00'),
+            distance_customer_to_loading_km=Decimal('0.00'),
+        )
+
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.transportations.count(), 2)
+        self.assertEqual(request_obj.assigned_capacity_tons(), Decimal('18.00'))
+        self.assertEqual(request_obj.total_distance_km(), Decimal('49.00'))
+        self.assertEqual(request_obj.cost, Decimal('18600.00'))
+        self.assertEqual({first.vehicle_id, second.vehicle_id}, set(request_obj.transportations.values_list('vehicle_id', flat=True)))
+
+    def test_can_increase_request_weight_after_assignment(self):
         request_obj = self._create_request(status=self.status_processing, cargo_weight=Decimal('8.00'))
         transportation = Transportation(
             request=request_obj,
@@ -292,10 +332,9 @@ class LogisticsFlowTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Масса груза превышает суммарную грузоподъемность назначенного транспорта')
+        self.assertEqual(response.status_code, 302)
         request_obj.refresh_from_db()
-        self.assertEqual(request_obj.cargo_weight, Decimal('8.00'))
+        self.assertEqual(request_obj.cargo_weight, Decimal('12.00'))
 
     def test_completed_request_moves_to_archive_and_releases_resources(self):
         request_obj = self._create_request(status=self.status_processing)

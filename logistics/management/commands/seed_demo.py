@@ -34,7 +34,8 @@ class Command(BaseCommand):
 
             for spec in self._build_request_specs():
                 request_obj = self._upsert_request(spec, clients, statuses, admin_user)
-                self._upsert_transportation(spec, request_obj, drivers, vehicles, statuses, admin_user)
+                for transportation_spec in self._get_transportation_specs(spec):
+                    self._upsert_transportation(transportation_spec, request_obj, drivers, vehicles, statuses, admin_user)
                 self._apply_final_status(spec, request_obj, statuses, admin_user)
 
             refresh_all_resource_availability()
@@ -60,15 +61,26 @@ class Command(BaseCommand):
                 "cost": None,
                 "comment": "Разгрузка краном заказчика до 14:00.",
                 "status": "assigned",
-                "transportation": {
-                    "driver": "Иванов Иван Иванович",
-                    "vehicle": "У321УУ77",
-                    "trip_count": 2,
-                    "distance_parking_to_loading_km": 14.0,
-                    "distance_loading_to_customer_km": 32.0,
-                    "distance_customer_to_loading_km": 30.0,
-                    "assigned_at": now - timedelta(hours=6),
-                },
+                "transportations": [
+                    {
+                        "driver": "Иванов Иван Иванович",
+                        "vehicle": "У321УУ77",
+                        "trip_count": 1,
+                        "distance_parking_to_loading_km": 14.0,
+                        "distance_loading_to_customer_km": 32.0,
+                        "distance_customer_to_loading_km": 0.0,
+                        "assigned_at": now - timedelta(hours=6),
+                    },
+                    {
+                        "driver": "Михайлов Денис Романович",
+                        "vehicle": "Л111ЛЛ77",
+                        "trip_count": 1,
+                        "distance_parking_to_loading_km": 12.0,
+                        "distance_loading_to_customer_km": 32.0,
+                        "distance_customer_to_loading_km": 0.0,
+                        "assigned_at": now - timedelta(hours=5, minutes=30),
+                    },
+                ],
             },
             {
                 "client": "ООО БетонСнаб",
@@ -479,6 +491,7 @@ class Command(BaseCommand):
             ("Федоров Николай Павлович", "+79000000107", "ВУ-107"),
             ("Васильев Дмитрий Сергеевич", "+79000000108", "ВУ-108"),
             ("Новиков Артем Евгеньевич", "+79000000109", "ВУ-109"),
+            ("Михайлов Денис Романович", "+79000000110", "ВУ-110"),
         ]
         drivers = {}
         for full_name, phone, license_number in driver_specs:
@@ -497,6 +510,7 @@ class Command(BaseCommand):
         vehicle_specs = [
             ("А123АА77", "A123AA77", "КамАЗ", "65115", 20),
             ("У321УУ77", "У321УУ77", "ГАЗ", "Next", 10),
+            ("Л111ЛЛ77", "Л111ЛЛ77", "КамАЗ", "4308", 10),
             ("В456ВВ77", "B456BB77", "МАЗ", "6501", 18),
             ("С789СС77", "C789CC77", "КамАЗ", "6520", 20),
             ("Е222КК77", "E222KK77", "Урал", "Next", 12),
@@ -563,7 +577,7 @@ class Command(BaseCommand):
                 cargo_volume=cargo_volume,
                 cost=cost,
                 comment=spec["comment"],
-                status=statuses["processing"] if spec.get("transportation") else statuses[spec["status"]],
+                status=statuses["processing"] if self._get_transportation_specs(spec) else statuses[spec["status"]],
                 created_by=admin_user,
             )
 
@@ -600,12 +614,19 @@ class Command(BaseCommand):
         value = transportation_spec.get(field_name, default_value)
         return Decimal(str(value))
 
-    def _upsert_transportation(self, spec, request_obj, drivers, vehicles, statuses, admin_user):
-        transportation_spec = spec.get("transportation")
-        if not transportation_spec:
-            return
+    def _get_transportation_specs(self, spec):
+        if spec.get("transportations"):
+            return spec["transportations"]
+        if spec.get("transportation"):
+            return [spec["transportation"]]
+        return []
 
-        transportation = Transportation.objects.filter(request=request_obj).first()
+    def _upsert_transportation(self, transportation_spec, request_obj, drivers, vehicles, statuses, admin_user):
+        transportation = Transportation.objects.filter(
+            request=request_obj,
+            driver=drivers[transportation_spec["driver"]],
+            vehicle=vehicles[transportation_spec["vehicle"]],
+        ).first()
         if transportation is None and (request_obj.archived or request_obj.is_terminal):
             request_obj.status = statuses["processing"]
             request_obj.archived = False

@@ -215,24 +215,55 @@ class TransportationRequest(TimeStampedModel):
             return (self.BASE_RATE + self.cargo_volume * rates['m3']).quantize(Decimal('0.01'))
         return None
 
-    def get_transportation_for_cost(self):
-        if hasattr(self, 'transportation'):
-            return self.transportation
-        if self.pk:
-            return Transportation.objects.filter(request=self).first()
-        return None
-
     def calculate_distance_cost(self, transportation=None):
-        transportation = transportation if transportation is not None else self.get_transportation_for_cost()
-        if not transportation:
-            return Decimal('0.00')
-        return (transportation.total_distance_km * self.DISTANCE_RATE_PER_KM).quantize(Decimal('0.01'))
+        return (self.total_distance_km(transportation) * self.DISTANCE_RATE_PER_KM).quantize(Decimal('0.01'))
 
     def calculate_cost(self, transportation=None):
         cargo_cost = self.calculate_cargo_cost()
         if cargo_cost is None:
             return None
         return (cargo_cost + self.calculate_distance_cost(transportation)).quantize(Decimal('0.01'))
+
+    def assigned_transportations(self, transportation=None):
+        if not self.pk:
+            items = []
+        else:
+            items = list(
+                self.transportations.select_related('driver', 'vehicle')
+                .order_by('assigned_at', 'created_at')
+            )
+
+        if transportation is not None:
+            items = [item for item in items if not transportation.pk or item.pk != transportation.pk]
+            items.append(transportation)
+        return items
+
+    def total_distance_km(self, transportation=None):
+        return sum(
+            (item.total_distance_km for item in self.assigned_transportations(transportation)),
+            Decimal('0.00'),
+        ).quantize(Decimal('0.01'))
+
+    def assigned_capacity_tons(self, transportation=None):
+        total = sum(
+            (item.total_capacity_tons or Decimal('0.00') for item in self.assigned_transportations(transportation)),
+            Decimal('0.00'),
+        )
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def assigned_transportation_count(self):
+        if not self.pk:
+            return 0
+        return self.transportations.count()
+
+    @property
+    def capacity_coverage_percent(self):
+        if self.cargo_weight is None or not self.cargo_weight:
+            return None
+        return (
+            self.assigned_capacity_tons() / self.cargo_weight * Decimal('100')
+        ).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
     def get_cargo_rates(self):
         return self.CARGO_TYPE_RATES.get(self.cargo_type, self.CARGO_TYPE_RATES[self.CargoType.SAND])
@@ -242,19 +273,6 @@ class TransportationRequest(TimeStampedModel):
         if self.cargo_weight is None and self.cargo_volume is None:
             message = 'Укажите массу или объем груза.'
             raise ValidationError({'cargo_weight': message, 'cargo_volume': message})
-
-        transportation = None
-        if self.pk:
-            transportation = self.transportation if hasattr(self, 'transportation') else Transportation.objects.select_related('vehicle').filter(request=self).first()
-
-        if transportation and self.cargo_weight is not None:
-            vehicle_capacity = transportation.vehicle.capacity_tons
-            trip_count = transportation.trip_count or 1
-            total_capacity = vehicle_capacity * trip_count if vehicle_capacity else None
-            if total_capacity and self.cargo_weight > total_capacity:
-                raise ValidationError({
-                    'cargo_weight': f'Масса груза превышает суммарную грузоподъемность назначенного транспорта за {trip_count} рейс(ов) ({total_capacity} т).'
-                })
 
     def save(self, *args, **kwargs):
         cost_was_auto_calculated = getattr(self, '_cost_was_auto_calculated', False)
@@ -334,10 +352,10 @@ class RequestStatusHistory(models.Model):
 
 
 class Transportation(TimeStampedModel):
-    request = models.OneToOneField(
+    request = models.ForeignKey(
         TransportationRequest,
         on_delete=models.CASCADE,
-        related_name='transportation',
+        related_name='transportations',
         verbose_name='Заявка',
     )
     vehicle = models.ForeignKey(Vehicle, on_delete=models.PROTECT, related_name='transportations', verbose_name='Транспорт')
@@ -433,14 +451,6 @@ class Transportation(TimeStampedModel):
             if request_obj.archived or request_obj.is_terminal:
                 errors['request'] = 'Нельзя назначить перевозку архивной или завершенной заявке.'
 
-        if request_obj is not None and self.vehicle_id and request_obj.cargo_weight is not None:
-            vehicle = self.vehicle if hasattr(self, 'vehicle') else Vehicle.objects.get(pk=self.vehicle_id)
-            trip_count = self.trip_count or 1
-            total_capacity = vehicle.capacity_tons * trip_count if vehicle.capacity_tons else None
-            if total_capacity and request_obj.cargo_weight > total_capacity:
-                required_trips = int((request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING))
-                errors['trip_count'] = f'Для этой массы груза нужно минимум {required_trips} рейс(ов) выбранного транспорта.'
-
         conflicts = active_transportations(exclude_transportation_id=self.pk)
         if self.driver_id:
             busy_transportation = conflicts.filter(driver_id=self.driver_id).select_related('request').first()
@@ -505,9 +515,16 @@ class Transportation(TimeStampedModel):
         driver_id = self.driver_id
         vehicle_id = self.vehicle_id
         request_obj = self.request
+        request_obj, previous_auto_costs = self._get_request_auto_cost_state()
         super().delete(*args, **kwargs)
+        if request_obj is not None and request_obj.cost in previous_auto_costs:
+            new_cost = request_obj.calculate_cost()
+            if new_cost is not None and request_obj.cost != new_cost:
+                request_obj.cost = new_cost
+                request_obj._cost_was_auto_calculated = True
+                request_obj.save(update_fields=['cost', 'updated_at'])
         refresh_resource_availability(driver_ids={driver_id}, vehicle_ids={vehicle_id})
-        if request_obj.status.code == 'assigned':
+        if request_obj.status.code == 'assigned' and not request_obj.transportations.exists():
             processing_status = get_status('processing')
             if processing_status:
                 request_obj.status = processing_status
@@ -550,13 +567,9 @@ def refresh_resource_availability(driver_ids=None, vehicle_ids=None):
 
 
 def sync_request_resource_availability(request_obj: TransportationRequest):
-    transportation = getattr(request_obj, 'transportation', None)
-    if transportation is None:
-        return
-
     refresh_resource_availability(
-        driver_ids={transportation.driver_id},
-        vehicle_ids={transportation.vehicle_id},
+        driver_ids=set(request_obj.transportations.values_list('driver_id', flat=True)),
+        vehicle_ids=set(request_obj.transportations.values_list('vehicle_id', flat=True)),
     )
 
 

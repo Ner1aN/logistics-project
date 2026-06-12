@@ -17,7 +17,7 @@
         <a class="btn btn-outline-primary" href="{% url 'request-edit' request_obj.pk %}">Редактировать</a>
         {% if can_assign %}
             <a class="btn btn-primary" href="{% url 'request-assign' request_obj.pk %}">
-                {% if transportation %}Изменить перевозку{% else %}Назначить перевозку{% endif %}
+                Добавить ТС
             </a>
         {% endif %}
     </div>
@@ -67,6 +67,20 @@
                     <dt class="col-sm-4">Стоимость километража</dt>
                     <dd class="col-sm-8">{{ request_obj.calculate_distance_cost }} ₽</dd>
 
+                    <dt class="col-sm-4">Назначено ТС</dt>
+                    <dd class="col-sm-8">{{ request_obj.assigned_transportation_count }}</dd>
+
+                    <dt class="col-sm-4">Суммарная грузоподъемность</dt>
+                    <dd class="col-sm-8">
+                        {{ request_obj.assigned_capacity_tons }} т
+                        {% if request_obj.capacity_coverage_percent %}
+                            <span class="table-note">({{ request_obj.capacity_coverage_percent }}% от массы груза)</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Общий километраж</dt>
+                    <dd class="col-sm-8">{{ request_obj.total_distance_km }} км</dd>
+
                     <dt class="col-sm-4">Комментарий</dt>
                     <dd class="col-sm-8">{{ request_obj.comment|default:'—' }}</dd>
 
@@ -113,62 +127,54 @@
                     <strong>Назначенные ресурсы</strong>
                 </div>
                 <div class="card-body detail-card-body">
-                    {% if transportation %}
-                        <dl class="row details-grid mb-3">
-                            <dt class="col-sm-5">Водитель</dt>
-                            <dd class="col-sm-7">{{ transportation.driver.full_name }}</dd>
+                    {% if transportations %}
+                        <div class="d-grid gap-3">
+                            {% for transportation in transportations %}
+                                <div class="border rounded-4 p-3 bg-light">
+                                    <div class="d-flex justify-content-between gap-2 mb-2">
+                                        <div>
+                                            <div class="fw-semibold">{{ transportation.vehicle.registration_number }}</div>
+                                            <div class="table-note">{{ transportation.driver.full_name }}</div>
+                                        </div>
+                                        <span class="badge text-bg-light border">#{{ transportation.pk }}</span>
+                                    </div>
+                                    <dl class="row details-grid mb-3">
+                                        <dt class="col-sm-6">Рейсов ТС</dt>
+                                        <dd class="col-sm-6">{{ transportation.trip_count }}</dd>
 
-                            <dt class="col-sm-5">Транспорт</dt>
-                            <dd class="col-sm-7">{{ transportation.vehicle.registration_number }}</dd>
+                                        <dt class="col-sm-6">Грузоподъемность</dt>
+                                        <dd class="col-sm-6">{{ transportation.total_capacity_tons|default:'—' }} т</dd>
 
-                            <dt class="col-sm-5">Загрузка</dt>
-                            <dd class="col-sm-7">
-                                {% if transportation.load_percent %}
-                                    {{ transportation.load_percent }}%
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </dd>
+                                        <dt class="col-sm-6">Загрузка, если везет одна</dt>
+                                        <dd class="col-sm-6">{{ transportation.load_percent|default:'—' }}%</dd>
 
-                            <dt class="col-sm-5">Рейсов ТС</dt>
-                            <dd class="col-sm-7">
-                                {{ transportation.trip_count }}
-                                {% if transportation.required_trip_count %}
-                                    <span class="table-note">/ минимум {{ transportation.required_trip_count }}</span>
-                                {% endif %}
-                            </dd>
+                                        <dt class="col-sm-6">Плечо 1</dt>
+                                        <dd class="col-sm-6">{{ transportation.distance_parking_to_loading_km }} км</dd>
 
-                            <dt class="col-sm-5">Суммарная грузоподъемность</dt>
-                            <dd class="col-sm-7">{{ transportation.total_capacity_tons|default:'—' }} т</dd>
+                                        <dt class="col-sm-6">Плечо 2</dt>
+                                        <dd class="col-sm-6">{{ transportation.distance_loading_to_customer_km }} км</dd>
 
-                            <dt class="col-sm-5">Плечо 1</dt>
-                            <dd class="col-sm-7">{{ transportation.distance_parking_to_loading_km }} км</dd>
+                                        <dt class="col-sm-6">Плечо 3</dt>
+                                        <dd class="col-sm-6">{{ transportation.distance_customer_to_loading_km }} км</dd>
 
-                            <dt class="col-sm-5">Плечо 2</dt>
-                            <dd class="col-sm-7">{{ transportation.distance_loading_to_customer_km }} км</dd>
+                                        <dt class="col-sm-6">Итого км</dt>
+                                        <dd class="col-sm-6">{{ transportation.total_distance_km }} км</dd>
 
-                            <dt class="col-sm-5">Плечо 3</dt>
-                            <dd class="col-sm-7">{{ transportation.distance_customer_to_loading_km }} км</dd>
-
-                            <dt class="col-sm-5">Общий километраж</dt>
-                            <dd class="col-sm-7">{{ transportation.total_distance_km }} км</dd>
-
-                            <dt class="col-sm-5">Стоимость километража</dt>
-                            <dd class="col-sm-7">{{ transportation.distance_cost }} ₽</dd>
-
-                            <dt class="col-sm-5">Назначена</dt>
-                            <dd class="col-sm-7">{{ transportation.assigned_at|date:'d.m.Y H:i' }}</dd>
-
-                            <dt class="col-sm-5">Старт</dt>
-                            <dd class="col-sm-7">{{ transportation.departure_at|date:'d.m.Y H:i'|default:'—' }}</dd>
-
-                            <dt class="col-sm-5">Завершение</dt>
-                            <dd class="col-sm-7">{{ transportation.arrival_at|date:'d.m.Y H:i'|default:'—' }}</dd>
-
-                            <dt class="col-sm-5">Примечание</dt>
-                            <dd class="col-sm-7">{{ transportation.notes|default:'—' }}</dd>
-                        </dl>
-                        <a class="btn btn-outline-secondary w-100" href="{% url 'transportation-detail' transportation.pk %}">Открыть перевозку</a>
+                                        <dt class="col-sm-6">Стоимость км</dt>
+                                        <dd class="col-sm-6">{{ transportation.distance_cost }} ₽</dd>
+                                    </dl>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a class="btn btn-sm btn-outline-secondary" href="{% url 'transportation-detail' transportation.pk %}">Открыть</a>
+                                        {% if can_assign %}
+                                            <a class="btn btn-sm btn-outline-primary" href="{% url 'transportation-edit' transportation.pk %}">Изменить</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        {% if can_assign %}
+                            <a class="btn btn-primary w-100 mt-3" href="{% url 'request-assign' request_obj.pk %}">Добавить еще ТС</a>
+                        {% endif %}
                     {% else %}
                         <p class="table-note mb-3">Водитель и транспорт пока не закреплены за этой заявкой.</p>
                         {% if can_assign %}

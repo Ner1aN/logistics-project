@@ -15,6 +15,7 @@
     <div class="page-header-actions">
         <a class="btn btn-outline-secondary" href="{% url 'transportation-list' %}">К перевозкам</a>
         <a class="btn btn-outline-primary" href="{% url 'request-detail' transportation.request.pk %}">Открыть заявку</a>
+        <a class="btn btn-primary" href="{% url 'transportation-edit' transportation.pk %}">Изменить перевозку</a>
     </div>
 </div>
 

@@ -186,6 +186,9 @@ class TransportationAssignForm(BaseModelForm):
 
         self.load_percent_preview = None
         self.required_trip_count_preview = None
+        self.selected_capacity_preview = None
+        self.assigned_capacity_preview = None
+        self.capacity_coverage_preview = None
         self.total_distance_preview = None
         self.distance_cost_preview = None
         current_vehicle_ids = {self.instance.vehicle_id} if self.instance and self.instance.pk else set()
@@ -201,7 +204,7 @@ class TransportationAssignForm(BaseModelForm):
 
         self.fields['vehicle'].queryset = Vehicle.objects.filter(Q(is_available=True) | Q(pk__in=current_vehicle_ids)).distinct()
         self.fields['driver'].queryset = Driver.objects.filter(Q(is_available=True) | Q(pk__in=current_driver_ids)).distinct()
-        self.fields['vehicle'].help_text = 'Если в заявке указана масса, система проверит суммарную грузоподъемность выбранного транспорта за указанное число рейсов.'
+        self.fields['vehicle'].help_text = 'Можно назначить несколько ТС на одну заявку. Система покажет суммарное покрытие груза по всем назначенным машинам.'
         self.fields['trip_count'].help_text = 'Укажите, сколько доставок сделает это ТС в рамках одной заявки.'
         self.fields['distance_parking_to_loading_km'].help_text = 'Плечо 1: от стоянки транспорта до места погрузки.'
         self.fields['distance_loading_to_customer_km'].help_text = 'Плечо 2: от места погрузки до заказчика. Умножается на количество рейсов.'
@@ -230,12 +233,27 @@ class TransportationAssignForm(BaseModelForm):
         self.required_trip_count_preview = int(
             (self.request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING)
         )
-        total_capacity = vehicle.capacity_tons * trip_count
-        if not total_capacity:
+        selected_capacity = vehicle.capacity_tons * trip_count
+        if not selected_capacity:
             return
 
+        existing_capacity = Decimal('0')
+        if self.request_obj.pk:
+            existing_transportations = self.request_obj.transportations.select_related('vehicle')
+            if self.instance and self.instance.pk:
+                existing_transportations = existing_transportations.exclude(pk=self.instance.pk)
+            existing_capacity = sum(
+                (item.total_capacity_tons or Decimal('0') for item in existing_transportations),
+                Decimal('0'),
+            )
+
+        self.selected_capacity_preview = selected_capacity.quantize(Decimal('0.01'))
+        self.assigned_capacity_preview = (existing_capacity + selected_capacity).quantize(Decimal('0.01'))
         self.load_percent_preview = (
-            self.request_obj.cargo_weight / total_capacity * Decimal('100')
+            self.request_obj.cargo_weight / selected_capacity * Decimal('100')
+        ).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+        self.capacity_coverage_preview = (
+            self.assigned_capacity_preview / self.request_obj.cargo_weight * Decimal('100')
         ).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
     def _get_trip_count_value(self):
@@ -272,13 +290,4 @@ class TransportationAssignForm(BaseModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        vehicle = cleaned_data.get('vehicle')
-        trip_count = cleaned_data.get('trip_count') or 1
-        if self.request_obj and vehicle and self.request_obj.cargo_weight is not None:
-            total_capacity = vehicle.capacity_tons * trip_count if vehicle.capacity_tons else None
-            if total_capacity and self.request_obj.cargo_weight > total_capacity:
-                required_trips = int(
-                    (self.request_obj.cargo_weight / vehicle.capacity_tons).to_integral_value(rounding=ROUND_CEILING)
-                )
-                self.add_error('trip_count', f'Для этой массы груза нужно минимум {required_trips} рейс(ов) выбранного транспорта.')
         return cleaned_data

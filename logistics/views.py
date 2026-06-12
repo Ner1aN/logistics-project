@@ -68,7 +68,10 @@ def _filter_requests(queryset, params, archive_mode=None):
 def dashboard(request):
     ensure_default_statuses()
     today = timezone.localdate()
-    request_queryset = TransportationRequest.objects.select_related('client', 'status', 'transportation__driver', 'transportation__vehicle')
+    request_queryset = TransportationRequest.objects.select_related('client', 'status').prefetch_related(
+        'transportations__driver',
+        'transportations__vehicle',
+    )
     upcoming_transportations = (
         Transportation.objects.select_related('request', 'request__client', 'driver', 'vehicle')
         .filter(request__transportation_date__gte=today)
@@ -197,8 +200,9 @@ class RequestListView(LoginRequiredMixin, ListView):
         queryset = TransportationRequest.objects.select_related(
             'client',
             'status',
-            'transportation__driver',
-            'transportation__vehicle',
+        ).prefetch_related(
+            'transportations__driver',
+            'transportations__vehicle',
         )
         queryset = _filter_requests(queryset, self.request.GET, archive_mode=self.archive_mode)
         if self.archive_mode:
@@ -232,9 +236,9 @@ class RequestDetailView(LoginRequiredMixin, DetailView):
             'client',
             'status',
             'created_by',
-            'transportation__driver',
-            'transportation__vehicle',
         ).prefetch_related(
+            'transportations__driver',
+            'transportations__vehicle',
             Prefetch(
                 'status_history',
                 queryset=RequestStatusHistory.objects.select_related('status', 'changed_by'),
@@ -243,7 +247,7 @@ class RequestDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['transportation'] = getattr(self.object, 'transportation', None)
+        context['transportations'] = self.object.transportations.select_related('driver', 'vehicle').order_by('assigned_at', 'created_at')
         context['can_assign'] = not self.object.archived and not self.object.is_terminal
         return context
 
@@ -322,17 +326,16 @@ class TransportationDetailView(LoginRequiredMixin, DetailView):
 @login_required
 def assign_transportation(request, pk):
     request_obj = get_object_or_404(
-        TransportationRequest.objects.select_related('client', 'status', 'transportation__driver', 'transportation__vehicle'),
+        TransportationRequest.objects.select_related('client', 'status'),
         pk=pk,
     )
-    instance = getattr(request_obj, 'transportation', None)
-    form = TransportationAssignForm(request.POST or None, instance=instance, request_obj=request_obj)
+    form = TransportationAssignForm(request.POST or None, request_obj=request_obj)
     if request.method == 'POST' and form.is_valid():
         transportation = form.save(commit=False)
         transportation.request = request_obj
         transportation._acting_user = request.user
         transportation.save()
-        messages.success(request, 'Водитель и транспорт закреплены за заявкой.')
+        messages.success(request, 'Водитель и транспорт добавлены к заявке.')
         return redirect('request-detail', pk=request_obj.pk)
     return render(
         request,
@@ -341,6 +344,32 @@ def assign_transportation(request, pk):
             'form': form,
             'object': request_obj,
             'title': f'Назначение перевозки для заявки #{request_obj.pk}',
+        },
+    )
+
+
+@login_required
+def edit_transportation(request, pk):
+    transportation = get_object_or_404(
+        Transportation.objects.select_related('request', 'request__client', 'request__status', 'driver', 'vehicle'),
+        pk=pk,
+    )
+    request_obj = transportation.request
+    form = TransportationAssignForm(request.POST or None, instance=transportation, request_obj=request_obj)
+    if request.method == 'POST' and form.is_valid():
+        transportation = form.save(commit=False)
+        transportation.request = request_obj
+        transportation._acting_user = request.user
+        transportation.save()
+        messages.success(request, 'Назначение транспорта обновлено.')
+        return redirect('request-detail', pk=request_obj.pk)
+    return render(
+        request,
+        'logistics/form.html',
+        {
+            'form': form,
+            'object': transportation,
+            'title': f'Редактирование перевозки #{transportation.pk} по заявке #{request_obj.pk}',
         },
     )
 
@@ -364,8 +393,9 @@ def _build_reports_context(params):
     request_queryset = TransportationRequest.objects.select_related(
         'client',
         'status',
-        'transportation__driver',
-        'transportation__vehicle',
+    ).prefetch_related(
+        'transportations__driver',
+        'transportations__vehicle',
     )
     request_queryset = _filter_requests(request_queryset, params, archive_mode=None)
 
@@ -418,6 +448,9 @@ def _build_reports_context(params):
         Decimal('0.00'),
     )
     completed_transportation_trips = completed_transportations.aggregate(total=Sum('trip_count'))['total'] or 0
+    completed_transportation_cost = TransportationRequest.objects.filter(
+        pk__in=completed_transportations.values('request_id'),
+    ).aggregate(total=Sum('cost'))['total'] or 0
 
     driver_load_stats = completed_transportations.values('driver__full_name').annotate(
         total=Count('id'),
@@ -472,7 +505,7 @@ def _build_reports_context(params):
         'request_total_cost': request_queryset.aggregate(total=Sum('cost'))['total'] or 0,
         'request_total_count': request_total_count,
         'completed_transportation_count': completed_transportations.count(),
-        'completed_transportation_cost': completed_transportations.aggregate(total=Sum('request__cost'))['total'] or 0,
+        'completed_transportation_cost': completed_transportation_cost,
         'completed_transportation_distance': completed_transportation_distance,
         'completed_transportation_trips': completed_transportation_trips,
         'average_request_cost': average_request_cost,
